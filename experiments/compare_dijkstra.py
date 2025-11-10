@@ -21,41 +21,62 @@ def edge_graph(V, F) -> csr_matrix:
     return coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
 
 
-def run_one(mesh_path: str, k_sources: int = 3,
-            t_mult: float = 1.0, rhs_variant: str = "weak",
-            rhs_sign: int = -1, heat_rhs: str = "Mdelta"):
-    """Convenience runner on a single mesh (aligns φ to the source like Dijkstra)."""
+def robust_scale(dist: np.ndarray) -> float:
+    """Robust scale for relative errors: 90th percentile of finite distances."""
+    finite = dist[np.isfinite(dist)]
+    if finite.size == 0:
+        return 1.0
+    return float(np.percentile(finite, 90.0))
+
+
+def run_one(mesh_path: str, t_mult: float = 1.0, heat_rhs: str = "Mdelta"):
+    """
+    Run Heat vs Dijkstra on a single mesh.
+    Returns dict with sizes, errors, and fair timings.
+    """
+    # Load mesh once
     M = Mesh.load(mesh_path)
     V, F = M.V, M.F
-    G = edge_graph(V, F)
 
-    cand = np.argsort(np.linalg.norm(V - V.mean(0), axis=1))[-k_sources:]
-    src = int(cand[0])
-
+    # Build graph and time it (for fair Dijkstra total time)
     t0 = time.perf_counter()
-    phi, info = heat_geodesic_from_sources(
-        M, src, t=None, t_mult=t_mult,
-        rhs_variant=rhs_variant, rhs_sign=rhs_sign, heat_rhs=heat_rhs
-    )
-    th = time.perf_counter() - t0
+    G = edge_graph(V, F)
+    t_graph = time.perf_counter() - t0
 
-    phi = phi - phi[src]
-    phi = np.maximum(phi, 0.0)
+    # Source: farthest from centroid (deterministic)
+    src = int(np.argmax(np.linalg.norm(V - V.mean(0), axis=1)))
 
+    # Heat method timing (includes operator assembly inside the function)
+    t0 = time.perf_counter()
+    phi, info = heat_geodesic_from_sources(M, src, t=None, t_mult=t_mult, heat_rhs=heat_rhs)
+    t_heat_total = time.perf_counter() - t0
+
+    # Anchor at source and clamp small negatives
+    phi = np.maximum(phi - phi[src], 0.0)
+
+    # Dijkstra timing: solve-only and total (graph+solve)
     t1 = time.perf_counter()
     d = dijkstra(G, directed=False, indices=src)
-    td = time.perf_counter() - t1
+    t_dijk_solve = time.perf_counter() - t1
+    t_dijk_total = t_graph + t_dijk_solve
 
-    # compare
-    scale = max(np.median(d[d < np.inf]), 1e-12)
+    # Errors
+    scale = max(robust_scale(d), 1e-12)
     err = np.abs(phi - d)
     return {
-        "nV": V.shape[0], "nF": F.shape[0],
-        "t_heat": th, "t_dijk": td,
-        "mean_err": float(err.mean()), "max_err": float(err.max()),
-        "rel_mean_err": float(err.mean() / scale), "rel_max_err": float(err.max() / scale),
-        "t_used": info["t"], "rhs_variant": rhs_variant,
-        "rhs_sign": rhs_sign, "t_mult": t_mult, "heat_rhs": heat_rhs,
+        "nV": int(V.shape[0]),
+        "nF": int(F.shape[0]),
+        "t_heat_total": float(t_heat_total),
+        "t_dijk_solve": float(t_dijk_solve),
+        "t_dijk_total": float(t_dijk_total),
+        "mean_err": float(err.mean()),
+        "max_err": float(err.max()),
+        "rel_mean_err": float(err.mean() / scale),
+        "rel_max_err": float(err.max() / scale),
+        "t_used": float(info["t"]),
+        "t_mult": float(t_mult),
+        "heat_rhs": heat_rhs,
+        "src": int(src),
     }
 
 
@@ -63,53 +84,21 @@ if __name__ == "__main__":
     bunny = os.path.join("data", "bunny", "reconstruction", "bun_zipper.ply")
     torus = os.path.join("data", "torus.obj")
 
-    
-    bunny_configs = [
-        (0.25, "weak", -1, "Mdelta"),
-        (1.00, "weak", -1, "Mdelta"),
-        (4.00, "weak", -1, "Mdelta"),
-        (16.0, "weak", -1, "Mdelta"),
-        (64.0, "weak", -1, "Mdelta"),
-    ]
-    torus_configs = [
-        (1.0, "weak", -1, "Mdelta"),
-        (4.0, "weak", -1, "Mdelta"),
+    configs = [
+        (bunny, [0.25, 1.0, 4.0, 16.0, 64.0]),
+        (torus, [1.0, 4.0]),
     ]
 
-    for path, cfgs in [(bunny, bunny_configs), (torus, torus_configs)]:
-        print(f"\n=== {os.path.basename(path)} ===")
-        for (tm, rv, rs, h_rhs) in cfgs:
-            M = Mesh.load(path)
-            V, F = M.V, M.F
-            G = edge_graph(V, F)
-
-            src = int(np.argmax(np.linalg.norm(V - V.mean(0), axis=1)))
-
-            t0 = time.perf_counter()
-            phi, info = heat_geodesic_from_sources(
-                M, src,
-                t=None,
-                t_mult=tm,
-                rhs_variant=rv,
-                rhs_sign=rs,
-                heat_rhs=h_rhs,
-            )
-            th = time.perf_counter() - t0
-
-            phi = phi - phi[src]
-            phi = np.maximum(phi, 0.0)
-
-            t1 = time.perf_counter()
-            d = dijkstra(G, directed=False, indices=src)
-            td = time.perf_counter() - t1
-
-            scale = max(np.median(d[d < np.inf]), 1e-12)
-            err = np.abs(phi - d)
-
-         
+    for path, t_mults in configs:
+        name = os.path.basename(path)
+        print(f"\n=== {name} ===")
+        # Load once per mesh, reuse graph internally in run_one
+        for tm in t_mults:
+            out = run_one(path, t_mult=tm, heat_rhs="Mdelta")
             print(
-                f"t_mult={tm:>5}, rhs={rv:>4}, sign={rs:+d}, heat_rhs={h_rhs:<6}  "
-                f"rel_mean={err.mean() / scale:.3f}, rel_max={err.max() / scale:.3f}, "
-                f"mean={err.mean():.3f}, max={err.max():.3f},  "
-                f"t_heat={th:.3f}s, t_dijk={td:.3f}s"
+                f"t_mult={tm:>5}  "
+                f"rel_mean={out['rel_mean_err']:.3f}, rel_max={out['rel_max_err']:.3f},  "
+                f"mean={out['mean_err']:.3f}, max={out['max_err']:.3f},  "
+                f"t_heat_total={out['t_heat_total']:.3f}s, "
+                f"t_dijk_solve={out['t_dijk_solve']:.3f}s, t_dijk_total={out['t_dijk_total']:.3f}s"
             )

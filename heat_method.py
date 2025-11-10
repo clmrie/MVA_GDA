@@ -37,9 +37,8 @@ def heat_geodesic_from_sources(
     t: float | None = None,
     *,
     t_mult: float = 1.0,
-    rhs_variant: str = "weak",
-    rhs_sign: int = -1,         
-    heat_rhs: str = "Mdelta",   
+    rhs_sign: int = -1,
+    heat_rhs: str = "Mdelta",
 ):
     """
     Heat Method for geodesic distance computation.
@@ -48,10 +47,9 @@ def heat_geodesic_from_sources(
     ----------
     mesh: has .V (n,3) and .F (m,3)
     source_ids: int or list[int]
-    t: base heat time; if None, uses h^2 with h = mean edge length
-    t_mult: multiply chosen t by this factor
-    rhs_variant: "weak" (integrated divergence) or "mass" (pointwise×mass)
-    rhs_sign: typically -1 with our divergence convention
+    t: base heat time; if None, uses h^2 with h = median edge length
+    t_mult: multiplier applied to base t
+    rhs_sign: typically -1, for div convention
     heat_rhs:
         "delta"  -> solve (M + tL) u = δ
         "Mdelta" -> solve (M + tL) u = M δ   (recommended with stiffness L)
@@ -59,13 +57,13 @@ def heat_geodesic_from_sources(
     Returns
     -------
     phi: (n,) geodesic distances
-    info: dictionary with extra metadata
+    info: dictionary with metadata and intermediate values
     """
     V, F = mesh.V, mesh.F
     n = V.shape[0]
 
-    L = cotangent_laplacian(V, F)         
-    M = lumped_mass_barycentric(V, F)     
+    L = cotangent_laplacian(V, F)
+    M = lumped_mass_barycentric(V, F)
 
     if t is None:
         h = _typical_edge_length(V, F)
@@ -76,6 +74,7 @@ def heat_geodesic_from_sources(
         source_ids = [int(source_ids)]
     else:
         source_ids = [int(s) for s in source_ids]
+
     delta = np.zeros(n, dtype=np.float64)
     delta[np.array(source_ids, dtype=int)] = 1.0
 
@@ -86,24 +85,18 @@ def heat_geodesic_from_sources(
         b_heat = M @ delta
     else:
         raise ValueError("heat_rhs must be 'delta' or 'Mdelta'")
+
     u = spla.spsolve(A_heat, b_heat)
 
-    grad_u = gradient_scalar_per_face(V, F, u) 
+    grad_u = gradient_scalar_per_face(V, F, u)
     norm = np.maximum(np.linalg.norm(grad_u, axis=1, keepdims=True), 1e-16)
-    X = -grad_u / norm  
+    X = -grad_u / norm  # normalized vector field
 
-    div_int = divergence_vertex_from_face_field(V, F, X)
-    if rhs_variant.lower() == "weak":
-        rhs = div_int
-    elif rhs_variant.lower() == "mass":
-        A_vert = M.diagonal()
-        div_point = div_int / np.maximum(A_vert, 1e-16)
-        rhs = A_vert * div_point
-    else:
-        raise ValueError("rhs_variant must be 'weak' or 'mass'")
-    rhs = rhs_sign * rhs
+    div = divergence_vertex_from_face_field(V, F, X)
+    rhs = rhs_sign * div
 
-    phi = _pin_solve(L, rhs, pin=0)
+    pin = source_ids[0] if len(source_ids) > 0 else 0
+    phi = _pin_solve(L, rhs, pin=pin)
 
     phi -= phi.min()
     phi = np.maximum(phi, 0.0)
@@ -112,8 +105,14 @@ def heat_geodesic_from_sources(
         "t": float(t),
         "L": L.tocsr(),
         "M": M.tocsr(),
-        "rhs_variant": rhs_variant,
+        "heat_rhs": heat_rhs,
         "rhs_sign": rhs_sign,
         "t_mult": t_mult,
-        "heat_rhs": heat_rhs,
+        "sources": source_ids,
+        # Optional (for visualization/debug):
+        "u": u,
+        "X": X,
+        "grad_u": grad_u,
+        "delta": delta,
+        "div": div,
     }

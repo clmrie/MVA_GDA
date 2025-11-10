@@ -4,9 +4,9 @@ import scipy.sparse as sp
 
 def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True, eps: float = 1e-12) -> sp.csr_matrix:
     """
-    Symmetric cotangent Laplacian (negative semidefinite).
-    Off-diagonal: L_ij = -w_ij,  Diagonal: L_ii = sum_j w_ij,
-    with w_ij = 0.5*(cot alpha + cot beta) accumulated over incident faces.
+    Symmetric cotangent Laplacian (positive semidefinite).
+    Constructs stiffness matrix: L_ij = -w_ij, L_ii = sum_j w_ij
+
     """
     n = V.shape[0]
     i, j, k = F[:, 0], F[:, 1], F[:, 2]
@@ -33,7 +33,7 @@ def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True, eps: f
 
     W = sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
     if clamp:
-        W.data[W.data < 0] = np.maximum(W.data[W.data < 0], -eps)
+        W.data = np.maximum(W.data, 0.0)
 
     d = np.asarray(W.sum(axis=1)).ravel()
     L = sp.diags(d, format="csr") - W
