@@ -1,12 +1,10 @@
-
 import numpy as np
 import scipy.sparse as sp
 
-def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True, eps: float = 1e-12) -> sp.csr_matrix:
+def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True) -> sp.csr_matrix:
     """
-    Symmetric cotangent Laplacian (positive semidefinite).
-    Constructs stiffness matrix: L_ij = -w_ij, L_ii = sum_j w_ij
-
+    Symmetric cotangent Laplacian. 
+    If clamp=True, negative weights are set to zero (Intrinsic Delaunay approximation).
     """
     n = V.shape[0]
     i, j, k = F[:, 0], F[:, 1], F[:, 2]
@@ -18,10 +16,9 @@ def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True, eps: f
         denom = np.maximum(denom, 1e-16)
         return (a * b).sum(axis=1) / denom
 
-    cot0 = cot(vj - vi, vk - vi) 
-    cot1 = cot(vk - vj, vi - vj)  
-    cot2 = cot(vi - vk, vj - vk) 
-
+    cot0 = cot(vj - vi, vk - vi)
+    cot1 = cot(vk - vj, vi - vj)
+    cot2 = cot(vi - vk, vj - vk)
 
     w_jk = 0.5 * cot0
     w_ki = 0.5 * cot1
@@ -32,6 +29,7 @@ def cotangent_laplacian(V: np.ndarray, F: np.ndarray, clamp: bool = True, eps: f
     data = np.concatenate([w_jk, w_jk, w_ki, w_ki, w_ij, w_ij])
 
     W = sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+    
     if clamp:
         W.data = np.maximum(W.data, 0.0)
 

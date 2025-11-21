@@ -1,15 +1,21 @@
-# experiments/compare_dijkstra.py
-import os, sys, time, numpy as np
+import os
+import sys
+import time
+import numpy as np
+from scipy.sparse import coo_matrix, csr_matrix
+from scipy.sparse.csgraph import dijkstra
+
 sys.path.insert(0, os.path.abspath("."))
 
 from mesh import Mesh
 from heat_method import heat_geodesic_from_sources
-from scipy.sparse import coo_matrix, csr_matrix
-from scipy.sparse.csgraph import dijkstra
 
 
-def edge_graph(V, F) -> csr_matrix:
-    """Undirected edge-length graph from triangle mesh (for Dijkstra baseline)."""
+def edge_graph(V: np.ndarray, F: np.ndarray) -> csr_matrix:
+    """
+    Undirected edge-length graph from triangle mesh.
+    NOTE: This computes Graph Distance, which overestimates true Geodesic Distance.
+    """
     E = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
     E = np.sort(E, axis=1)
     E = np.unique(E, axis=0)
@@ -22,7 +28,7 @@ def edge_graph(V, F) -> csr_matrix:
 
 
 def robust_scale(dist: np.ndarray) -> float:
-    """Robust scale for relative errors: 90th percentile of finite distances."""
+    """Robust scale (90th percentile) to normalize errors."""
     finite = dist[np.isfinite(dist)]
     if finite.size == 0:
         return 1.0
@@ -31,44 +37,48 @@ def robust_scale(dist: np.ndarray) -> float:
 
 def run_one(mesh_path: str, t_mult: float = 1.0, heat_rhs: str = "Mdelta"):
     """
-    Run Heat vs Dijkstra on a single mesh.
-    Returns dict with sizes, errors, and fair timings.
+    Run Heat vs Graph Dijkstra on a single mesh.
+    Returns dict with sizes, errors, and timings.
     """
-    # Load mesh once
+    if not os.path.exists(mesh_path):
+        return None
+
     M = Mesh.load(mesh_path)
     V, F = M.V, M.F
 
-    # Build graph and time it (for fair Dijkstra total time)
+    # 1. Build Graph (Baseline)
     t0 = time.perf_counter()
     G = edge_graph(V, F)
     t_graph = time.perf_counter() - t0
 
-    # Source: farthest from centroid (deterministic)
+    # Source: farthest from centroid
     src = int(np.argmax(np.linalg.norm(V - V.mean(0), axis=1)))
 
-    # Heat method timing (includes operator assembly inside the function)
+    # 2. Run Heat Method
     t0 = time.perf_counter()
-    phi, info = heat_geodesic_from_sources(M, src, t=None, t_mult=t_mult, heat_rhs=heat_rhs)
+    phi, info = heat_geodesic_from_sources(
+        M, src, t=None, t_mult=t_mult, heat_rhs=heat_rhs
+    )
     t_heat_total = time.perf_counter() - t0
 
-    # Anchor at source and clamp small negatives
     phi = np.maximum(phi - phi[src], 0.0)
 
-    # Dijkstra timing: solve-only and total (graph+solve)
+    # 3. Run Graph Dijkstra (Solve)
     t1 = time.perf_counter()
     d = dijkstra(G, directed=False, indices=src)
-    t_dijk_solve = time.perf_counter() - t1
-    t_dijk_total = t_graph + t_dijk_solve
+    t_graph_solve = time.perf_counter() - t1
+    t_graph_total = t_graph + t_graph_solve
 
-    # Errors
+    # 4. Compare
     scale = max(robust_scale(d), 1e-12)
     err = np.abs(phi - d)
+
     return {
         "nV": int(V.shape[0]),
         "nF": int(F.shape[0]),
         "t_heat_total": float(t_heat_total),
-        "t_dijk_solve": float(t_dijk_solve),
-        "t_dijk_total": float(t_dijk_total),
+        "t_graph_solve": float(t_graph_solve),
+        "t_graph_total": float(t_graph_total),
         "mean_err": float(err.mean()),
         "max_err": float(err.max()),
         "rel_mean_err": float(err.mean() / scale),
@@ -89,16 +99,22 @@ if __name__ == "__main__":
         (torus, [1.0, 4.0]),
     ]
 
+    print("Comparing Heat Method vs Graph Distance (Approximate Geodesic)")
+    
     for path, t_mults in configs:
         name = os.path.basename(path)
         print(f"\n=== {name} ===")
-        # Load once per mesh, reuse graph internally in run_one
+        
         for tm in t_mults:
             out = run_one(path, t_mult=tm, heat_rhs="Mdelta")
+            if out is None:
+                print(f"File not found: {path}")
+                break
+
             print(
                 f"t_mult={tm:>5}  "
                 f"rel_mean={out['rel_mean_err']:.3f}, rel_max={out['rel_max_err']:.3f},  "
                 f"mean={out['mean_err']:.3f}, max={out['max_err']:.3f},  "
-                f"t_heat_total={out['t_heat_total']:.3f}s, "
-                f"t_dijk_solve={out['t_dijk_solve']:.3f}s, t_dijk_total={out['t_dijk_total']:.3f}s"
+                f"t_heat={out['t_heat_total']:.3f}s, "
+                f"t_graph={out['t_graph_total']:.3f}s"
             )
