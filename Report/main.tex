@@ -61,6 +61,7 @@ Clément Marie \and Ilan Aliouchouche \and Karim Rochd
 % MAIN SECTIONS (Two Columns)
 % =====================
 \twocolumn
+
 % =====================
 % SECTION 1: INTRODUCTION & RELATED WORK
 % =====================
@@ -68,68 +69,22 @@ Clément Marie \and Ilan Aliouchouche \and Karim Rochd
 
 \subsection{The Geodesic Problem}
 
-Computing distance on curved surfaces presents a fundamental challenge that differs significantly from Euclidean geometry. While the straight-line distance between two points in flat space is trivially computed, the \textit{geodesic distance}---the length of the shortest path along a curved surface---requires far more sophisticated approaches.
-
-A key distinction exists between \textbf{graph distance} and \textbf{geodesic distance}. When a surface is discretized as a mesh, the most natural approach is to compute shortest paths along the mesh edges using algorithms like Dijkstra's. However, this \textit{graph distance} systematically overestimates the true geodesic distance because paths are constrained to follow edges rather than cutting across triangle faces. No matter how finely refined the mesh becomes, the graph distance converges only to a jagged approximation of the smooth geodesic.
-
-The multiple-source shortest path problem seeks the distance from each point of a domain to the closest point within a given subset. This problem is fundamental to a wide array of applications across computer science: from path planning and shape analysis to texture mapping and mesh segmentation.
+Computing distance on curved surfaces presents a fundamental challenge distinct from Euclidean geometry. While straight-line distance is trivial in flat space, the \textit{geodesic distance}—the length of the shortest path along a curved surface—requires sophisticated approaches. A key distinction exists between \textit{graph distance} and geodesic distance. Graph-based algorithms like Dijkstra's constrain paths to mesh edges, systematically overestimating the true distance regardless of mesh refinement. Conversely, the multiple-source shortest path problem, fundamental to shape analysis and path planning, seeks the distance from every point on a domain to the closest point within a specific subset.
 
 \subsection{Existing Methods}
 
-Before the Heat Method, two main families of algorithms dominated geodesic computation.
+Before the Heat Method, two main families of algorithms dominated: propagation-based methods and exact polyhedral methods.
 
 \paragraph{Fast Marching and Fast Sweeping.}
-The prevailing approach formulates the problem via the \textit{eikonal equation}:
-\begin{equation}
-    |\nabla \phi| = 1, \quad \phi|_{\gamma} = 0
-\end{equation}
-which states that distance increases at a rate of ``one meter per meter'' as one moves away from the source $\gamma$. However, this formulation is \textit{nonlinear} and \textit{hyperbolic}, making direct solution difficult.
-
-\textbf{Fast Marching} methods (Kimmel \& Sethian, 1998) propagate distance information in wavefront order using a priority queue, achieving $O(n \log n)$ complexity. \textbf{Fast Sweeping} iteratively relaxes the solution with carefully ordered sweeps, yielding $O(n)$ asymptotic complexity but often requiring many sweeps in practice.
-
-Key limitations of these methods include:
-\begin{itemize}
-    \item \textbf{No reuse:} Distance to different source sets must be computed from scratch each time.
-    \item \textbf{Parallelization challenges:} Priority queues are inherently serial, and irregular meshes lack natural sweeping orders.
-    \item \textbf{Implementation complexity:} Accurate fast marching on triangulated surfaces requires nonobtuse triangulations or iterative unfolding procedures.
-\end{itemize}
+These approaches formulate the problem via the nonlinear \textit{eikonal equation} ($|\nabla \phi| = 1$), propagating distance information outwards from a source. While Fast Marching achieves $O(n \log n)$ complexity, these methods suffer from significant practical limitations. They lack reusability, requiring distance computations to be restarted from scratch for each new source set. Furthermore, priority queues are inherently serial, hindering parallelization, while accurate implementation on triangulated surfaces often necessitates complex unfolding procedures or nonobtuse triangulations to avoid numerical errors.
 
 \paragraph{Exact Polyhedral Methods.}
-Mitchell, Mount, and Papadimitriou (1987) introduced an $O(n^2 \log n)$ algorithm computing the \textit{exact} polyhedral distance---paths that can cut through triangle faces. Surazhsky et al.\ (2005) demonstrated sub-quadratic practical performance and introduced an approximate $O(n \log n)$ variant with guaranteed error bounds.
-
-While mathematically elegant, exact methods have significant drawbacks:
-\begin{itemize}
-    \item High implementation complexity with sophisticated ``window'' data structures.
-    \item No prefactorization benefits---each query starts fresh.
-    \item Limited to triangle meshes; no direct generalization to point clouds or other representations.
-    \item Even ``exact'' polyhedral distance converges only \textit{quadratically} to the true smooth geodesic distance.
-\end{itemize}
+Algorithms by Mitchell, Mount, and Papadimitriou (MMP) and Surazhsky et al. compute exact paths that cut across triangle faces. Although mathematically precise, they are computationally expensive ($O(n^2 \log n)$ or worst-case exponential depending on the variant) and implementation-heavy. They generally lack prefactorization capabilities, meaning every query starts anew, and are typically restricted to triangle meshes without direct generalization to point clouds. Moreover, even ``exact'' polyhedral distances converge only quadratically to the true smooth geodesic distance, as the mesh itself is only an approximation of the underlying geometry.
 
 \subsection{The ``Heat'' Intuition: Varadhan's Formula}
 
-The Heat Method is inspired by a classical result in differential geometry. Imagine touching a scorching hot needle to a single point on a surface. Heat spreads out over time, described by the \textit{heat kernel} $k_t(x,y)$---the amount of heat transferred from source $x$ to destination $y$ after time $t$.
+The Heat Method is inspired by Varadhan's formula (1967), which connects heat diffusion to geodesic distance. The intuition is that heat spreads over a surface such that, for a short time $t$, the amount of heat transferred between two points is determined by the geodesic distance between them. However, directly applying this formula fails numerically due to the exponential decay of the heat kernel. The Heat Method's key insight is to use the heat kernel only to determine the \textit{direction} of the geodesic (the gradient), discarding the unstable magnitude information and reconstructing the distance via the linear Poisson equation.
 
-\textbf{Varadhan's formula} (1967) establishes a remarkable connection between heat diffusion and geodesic distance:
-\begin{equation}
-    \lim_{t \to 0} \sqrt{-4t \ln k_t(x,y)} = d(x,y)
-\end{equation}
-The intuition stems from a random walk interpretation: heat diffusion can be modeled as hot particles taking random walks from $x$. Any particle reaching a distant point $y$ after a very short time $t$ has had little time to deviate from the shortest possible path.
-
-However, directly applying Varadhan's formula fails numerically. The heat kernel decays exponentially with distance, and even small approximation errors produce incorrect distances. The key insight of the Heat Method is to use the heat kernel only to determine the \textit{direction} of increasing distance, not the magnitude. Since the true distance function satisfies $|\nabla \phi| = 1$ (from the eikonal equation), magnitude information can be safely discarded and distance reconstructed via integration.
-
-% [FIGURE 1: WIDE FORMAT]
-\begin{figure*}[t] 
-    \centering
-    % SMART IMAGE LOADER: Checks if file exists locally. If yes, loads it. If no, shows placeholder.
-    \IfFileExists{armadillo_isolines_t32.png}{
-        \includegraphics[width=0.7\textwidth]{armadillo_isolines_t32.png}
-    }{
-        \framebox{\parbox{0.7\textwidth}{\centering \vspace{3cm} \textbf{Image: armadillo\_isolines\_t32.png} \\ \small (Method Output) \vspace{3cm}}}
-    }
-    
-    \caption{\textbf{Method Output.} Geodesic isolines computed on the Armadillo mesh using the Scalar Heat Method ($t=32h^2$). By spanning the domain with heat diffusion, the method recovers smooth distance contours across complex geometry.}
-    \label{fig:armadillo_concept}
-\end{figure*}
 
 % =====================
 % SECTION 2: SCALAR HEAT METHOD
@@ -560,112 +515,25 @@ As seen in Figure \ref{fig:boundaries}, Dirichlet conditions cause the distance 
 % =====================
 \section{Discussion \& Limitations}
 
-\subsection{Role of the Time Step ($t$) as a Regularizer}
-A critical finding in the implementation is the divergence from the theoretical limit $t \to 0$. It was observed that larger time steps (up to $m=64$) yield significantly lower error on coarse meshes. In this context, $t$ acts as a \textbf{geometric regularizer}. A very small time step traps the heat diffusion within local triangulation artifacts, whereas a larger $t$ allows the heat to ``bridge'' these irregularities and recover the global geometry. 
+\subsection{Role of the Time Step and Boundary Physics}
+Our experiments reveal that the time step $t$ acts as a geometric regularizer rather than strictly following the theoretical limit $t \to 0$. Larger time steps allow heat to diffuse across discretization artifacts, effectively bridging irregularities on coarse meshes. However, excessive $t$ values can smooth over genuine curvature, leading to underestimation. regarding boundaries, Neumann conditions ($\nabla u \cdot \mathbf{n} = 0$) are strictly required to insulate the mesh, allowing heat to flow along the rim. In contrast, Dirichlet conditions force artificial heat loss, warping the gradient field and invalidating the distance computation near edges.
 
-However, this imposes a limitation: if $t$ is too large, the diffusion ignores the surface curvature (e.g., cutting through the volume of the Armadillo's ears rather than wrapping around them), leading to underestimated distances.
+\subsection{Global and Method-Specific Limitations}
+A universal challenge in geodesic computation is the \textit{cut locus}—the set of points where the shortest path is not unique. At these locations, the distance function is continuous but non-smooth. The Heat Method handles this by averaging competing vector directions, yielding smooth gradients but losing exact locus geometry. Similarly, polyhedral methods only approximate the smooth cut locus, often diverging substantially from the true geometry.
 
-\subsection{Boundary Physics: Neumann vs. Dirichlet}
-The comparison of boundary conditions confirms that \textbf{Neumann conditions} are strictly required for geodesic computation. Dirichlet conditions ($u|_{\partial \Omega} = 0$) act as a ``cliff,'' forcing heat to escape the domain and warping the gradient field inward. Conversely, Neumann conditions ($\nabla u \cdot \mathbf{n} = 0$) effectively insulate the mesh boundaries. This treats the edge as a solid wall, ensuring that the gradient field reflects movement \textit{along} the boundary rather than off it, which is physically consistent with the definition of geodesic distance.
+Each approach carries distinct constraints. The Heat Method's accuracy is sensitive to the time step choice and exhibits only linear convergence ($O(h)$), making it less suitable for applications requiring strict polyhedral precision. The Vector Heat Method further requires intrinsic Delaunay triangulations to ensure numerical stability. Conversely, Exact Polyhedral methods are brittle, limited to triangle meshes, and lack the precomputation benefits that make heat-based methods efficient for repeated queries.
 
-\subsection{Global Limitations}
-
-Both the Heat Method and exact polyhedral approaches share fundamental limitations rooted in the geometry of geodesics.
-
-\subsubsection{The Cut Locus Problem}
-
-The \textbf{cut locus} of a source point $x$ is the set of all points $p$ where there is no unique shortest geodesic from $x$ to $p$. At these points:
-\begin{itemize}
-    \item Multiple geodesics of equal length arrive simultaneously.
-    \item The distance function is continuous but not smooth (exhibits ``cusps'').
-    \item Any method must handle averaging or selection among competing paths.
-\end{itemize}
-
-For the Heat Method, vectors from different directions partially cancel at the cut locus, producing averaged behavior. This is generally beneficial (smooth gradients) but means the exact cut locus geometry is not preserved.
-
-For exact polyhedral methods, the computed cut locus is itself only an approximation---it has been shown that the polyhedral cut locus can differ substantially from the smooth one, even on fine meshes.
-
-\subsubsection{Curved vs. Polyhedral Geometry}
-
-A subtle but important point: even ``exact'' polyhedral distance is not the true smooth geodesic distance. The polyhedral surface is an approximation, and polyhedral geodesics converge only quadratically to smooth geodesics. For applications requiring true intrinsic distances, all discrete methods are approximations.
-
-\subsection{Method-Specific Limitations}
-
-\paragraph{Heat Method Limitations.}
-\begin{itemize}
-    \item Accuracy depends on time step $t$; optimal choice may vary by mesh.
-    \item Linear convergence ($O(h)$) vs. quadratic for exact methods.
-    \item Not suitable for applications requiring exact polyhedral geodesics (e.g., mesh unfolding).
-\end{itemize}
-
-\paragraph{Exact Method Limitations.}
-\begin{itemize}
-    \item No prefactorization: each query computed from scratch.
-    \item Implementation complexity: window propagation requires careful bookkeeping.
-    \item Limited generalization: designed for triangle meshes specifically.
-    \item Sensitivity to mesh quality and numerical precision.
-\end{itemize}
-
-\paragraph{Vector Heat Method Specific.}
-\begin{itemize}
-    \item Requires intrinsic Delaunay triangulation for robustness on pathological meshes.
-    \item Connection Laplacian may be indefinite on non-Delaunay meshes.
-    \item Parallel transport averaging at cut locus may not preserve expected symmetries.
-\end{itemize}
-
-\subsection{When to Use Which Method}
-
-\begin{tcolorbox}[colback=blue!5, colframe=blue!50!black, title=Method Selection Guide]
-\textbf{Use the Heat Method when:}
-\begin{itemize}
-    \item Multiple distance queries from different sources are needed.
-    \item Speed is more important than maximum precision.
-    \item Working with point clouds, polygon meshes, or non-standard representations.
-    \item Mesh quality is variable or contains noise.
-\end{itemize}
-
-\textbf{Use Exact Polyhedral Methods when:}
-\begin{itemize}
-    \item Single-query performance matters more than amortized cost.
-    \item Maximum possible precision is required.
-    \item Applications need exact geodesic paths (not just distances).
-    \item Mesh is high-quality and well-conditioned.
-\end{itemize}
-\end{tcolorbox}
+\subsection{Method Selection Guide}
+Selection depends on the application's specific needs. The Heat Method is optimal when speed and robustness are paramount, such as in shape analysis or texture synthesis involving noisy meshes and multiple source queries. In contrast, Exact Polyhedral methods are preferable for tasks demanding maximum precision on high-quality meshes, where the computational cost of single-query processing is acceptable.
 
 % =====================
 % CONCLUSION
 % =====================
 \section{Conclusion}
 
-This project has explored two complementary approaches to geodesic computation on discrete surfaces: the Heat Method and exact polyhedral algorithms.
+This project highlights the trade-off between the robust, approximate speed of heat diffusion and the brittle precision of exact polyhedral algorithms. The Heat Method’s shift from nonlinear hyperbolic formulations to linear elliptic systems offers order-of-magnitude speedups via prefactorization, broad generality across geometric representations, and natural regularization against noise.
 
-\paragraph{The Trade-Off.}
-The fundamental trade-off can be summarized as:
-\begin{center}
-\textit{Heat is fast and robust but approximate;\\Exact is slow and brittle but precise.}
-\end{center}
-
-The Heat Method transforms geodesic computation from a nonlinear hyperbolic problem into standard linear elliptic systems. This reformulation yields:
-\begin{itemize}
-    \item \textbf{Speed:} Order-of-magnitude faster amortized cost via prefactorization.
-    \item \textbf{Simplicity:} Implementation reduces to building Laplacian matrices and solving linear systems.
-    \item \textbf{Generality:} Works on any domain admitting a discrete Laplacian (point clouds, polygon meshes, voxelizations).
-    \item \textbf{Robustness:} Elliptic formulation provides natural regularization.
-\end{itemize}
-
-The Vector Heat Method extends these benefits to parallel transport of tangent vectors, enabling new algorithms for the logarithmic map, Karcher means, and geometric medians that were previously impractical.
-
-\paragraph{Future Directions.}
-Promising avenues for future work include:
-\begin{itemize}
-    \item Higher-order discretizations for improved convergence rates.
-    \item Adaptive time-stepping based on local mesh quality.
-    \item Extension to anisotropic distance functions.
-    \item GPU-accelerated implementations for real-time applications.
-\end{itemize}
-
-The heat-based approach has proven effective across a diverse range of applications in computational neuroscience, geometric modeling, medical imaging, computational design, and machine learning. As discrete Laplacians continue to be developed for new geometric representations, the Heat Method provides a robust and efficient foundation for geodesic computation.
+The Vector Heat Method extends these benefits to parallel transport, enabling robust computation of logarithmic maps and Karcher means. Future research may address current convergence limitations through higher-order discretizations, adaptive time-stepping based on local curvature, and GPU acceleration, further cementing the method's role in modern geometry processing.
 
 % =====================
 % REFERENCES
