@@ -3,11 +3,10 @@
 % --- PREAMBLE & PACKAGES ---
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-% \usepackage{lmodern} % Commented out - use default Computer Modern
 \usepackage[hidelinks]{hyperref}
 \usepackage{graphicx}
 \usepackage{geometry}
-\usepackage{float}       % Required for [H] (Strict placement)
+\usepackage{float}       % [H] option (avoid using in 2-column)
 \usepackage{subcaption}  % Required for sub-figures
 \usepackage{amsmath}     % Added for math formatting
 \usepackage{tikz}
@@ -15,12 +14,19 @@
 \pgfplotsset{compat=1.18}
 \usepackage{tikz-3dplot}
 \usepackage{mathtools}
-\geometry{margin=1in}
+\geometry{margin=0.8in}  % SENSITIVITY: Slightly increased margin space
 \usepackage{amssymb}     % Added for \mathbb
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{tcolorbox}
 \usepackage{booktabs}    % For professional tables
+\usepackage{enumitem}
+
+% --- SPACING ADJUSTMENTS ---
+% This tightens the gap between figures and text
+\setlength{\textfloatsep}{10pt plus 1.0pt minus 2.0pt}
+\setlength{\floatsep}{10pt plus 1.0pt minus 2.0pt}
+\setlength{\intextsep}{10pt plus 1.0pt minus 2.0pt}
 
 % Minimize white gaps between paragraphs
 \raggedbottom 
@@ -62,29 +68,22 @@ Clément Marie \and Ilan Aliouchouche \and Karim Rochd
 % =====================
 \twocolumn
 
-% =====================
-% SECTION 1: INTRODUCTION & RELATED WORK
-% =====================
-\section{Introduction \& Related Work}
+\section{Introduction}
 
-\subsection{The Geodesic Problem}
+Computing distance on curved surfaces presents a fundamental challenge distinct from Euclidean geometry. A key distinction exists between \textit{graph distance} (Dijkstra), which constrains paths to mesh edges, and true \textit{geodesic distance}—the shortest path along the continuous surface. Graph-based methods systematically overestimate distances, while the multiple-source shortest path problem remains critical for shape analysis and path planning.
 
-Computing distance on curved surfaces presents a fundamental challenge distinct from Euclidean geometry. While straight-line distance is trivial in flat space, the \textit{geodesic distance}—the length of the shortest path along a curved surface—requires sophisticated approaches. A key distinction exists between \textit{graph distance} and geodesic distance. Graph-based algorithms like Dijkstra's constrain paths to mesh edges, systematically overestimating the true distance regardless of mesh refinement. Conversely, the multiple-source shortest path problem, fundamental to shape analysis and path planning, seeks the distance from every point on a domain to the closest point within a specific subset.
+\paragraph{Existing Approaches.}
+Before the Heat Method, two families dominated:
 
-\subsection{Existing Methods}
+\begin{itemize}[leftmargin=*, nosep]
+    \sloppy 
+    \item \textbf{Propagation Methods (Fast Marching):} These solve the Eikonal equation $|\nabla \phi| = 1$ by propagating a wavefront. While reaching $O(n \log n)$, they are inherently serial (hindering parallelization) and lack reusability—every new source requires a full re-computation.
+    
+    \item \textbf{Exact Polyhedral Methods (MMP):} These compute exact paths across faces. While precise, they are computationally expensive ($O(n^2 \log n)$), complex to implement, and restricted to triangle meshes without generalization to point clouds.
+\end{itemize}
 
-Before the Heat Method, two main families of algorithms dominated: propagation-based methods and exact polyhedral methods.
-
-\paragraph{Fast Marching and Fast Sweeping.}
-These approaches formulate the problem via the nonlinear \textit{eikonal equation} ($|\nabla \phi| = 1$), propagating distance information outwards from a source. While Fast Marching achieves $O(n \log n)$ complexity, these methods suffer from significant practical limitations. They lack reusability, requiring distance computations to be restarted from scratch for each new source set. Furthermore, priority queues are inherently serial, hindering parallelization, while accurate implementation on triangulated surfaces often necessitates complex unfolding procedures or nonobtuse triangulations to avoid numerical errors.
-
-\paragraph{Exact Polyhedral Methods.}
-Algorithms by Mitchell, Mount, and Papadimitriou (MMP) and Surazhsky et al. compute exact paths that cut across triangle faces. Although mathematically precise, they are computationally expensive ($O(n^2 \log n)$ or worst-case exponential depending on the variant) and implementation-heavy. They generally lack prefactorization capabilities, meaning every query starts anew, and are typically restricted to triangle meshes without direct generalization to point clouds. Moreover, even ``exact'' polyhedral distances converge only quadratically to the true smooth geodesic distance, as the mesh itself is only an approximation of the underlying geometry.
-
-\subsection{The ``Heat'' Intuition: Varadhan's Formula}
-
-The Heat Method is inspired by Varadhan's formula (1967), which connects heat diffusion to geodesic distance. The intuition is that heat spreads over a surface such that, for a short time $t$, the amount of heat transferred between two points is determined by the geodesic distance between them. However, directly applying this formula fails numerically due to the exponential decay of the heat kernel. The Heat Method's key insight is to use the heat kernel only to determine the \textit{direction} of the geodesic (the gradient), discarding the unstable magnitude information and reconstructing the distance via the linear Poisson equation.
-
+\smallskip
+\noindent Our project implements the \textbf{Heat Method}, which overcomes these limitations by pre-factoring the geometry, allowing distance queries to be solved in milliseconds using standard linear algebra.
 
 % =====================
 % SECTION 2: SCALAR HEAT METHOD
@@ -130,15 +129,8 @@ To implement this on a triangle mesh, the \textbf{Cotangent Laplacian} $L_C$ is 
 \end{equation}
 where $\alpha_{ij}$ and $\beta_{ij}$ are the angles opposite the edge. This is combined with the lumped Mass matrix $M$, a diagonal matrix where $M_{ii}$ is one-third of the area of all triangles incident to vertex $i$.
 
-\paragraph{Time Step Selection.}
-The accuracy of the method relies on the time parameter $t = m \cdot h^2$ (where $h$ is the average edge length). While $m=1$ is the theoretical standard, experiments on the coarse Bunny mesh required larger time scales (up to $m=64$). This suggests that for low-resolution geometry, a larger $t$ is necessary to allow heat diffusion to bridge discretization artifacts and recover a smooth gradient.
-
-\paragraph{Boundary Conditions.}
-A critical implementation detail is the choice of boundary conditions. \textbf{Neumann boundary conditions} are applied, implying that no heat flows across the boundary ($\nabla u \cdot \mathbf{n} = 0$).
-Using Dirichlet conditions (fixing boundary values to 0) artificially accelerates heat loss, warping the gradient field near edges and resulting in underestimated distances. The Cotangent Laplacian naturally implements Neumann conditions, ensuring distance estimates remain valid even on the rim of the mesh.
-
-\paragraph{Computational Efficiency.}
-The operators $(M - t L_C)$ and $L_C$ are symmetric positive-definite. These matrices are pre-factored using \textbf{Cholesky decomposition}. While the initial factorization is costly, subsequent distance computations for new source points are extremely fast (back-substitution only), making this method ideal for interactive applications compared to one-off Dijkstra searches.
+\paragraph{Implementation Details.}
+We set the time step to $t = h^2$, where $h$ is the mean edge length, noting that larger steps help bridge artifacts in coarse meshes. We strictly enforce Neumann boundary conditions ($\nabla u \cdot \mathbf{n} = 0$) to prevent heat loss and gradient warping, a property naturally satisfied by the Cotangent Laplacian. Finally, we optimize performance by pre-factoring the symmetric positive-definite system matrices using sparse Cholesky decomposition \cite{crane2013}. While initialization is costly, this allows subsequent queries to be solved via back-substitution, rendering the method orders of magnitude faster than Dijkstra.
 
 % =====================
 % SECTION 3: METHODOLOGY B
@@ -149,22 +141,22 @@ The operators $(M - t L_C)$ and $L_C$ are symmetric positive-definite. These mat
 
 While the Scalar Heat Method computes a distance field by diffusing a scalar function from a point source, the Vector Heat Method generalizes this idea to tangent vector fields. Instead of tracking how heat spreads across the surface, it tracks how an initial tangent vector at a source point is parallel transported along geodesics.
 
-This shift from scalar to vector diffusion encodes not only how far points lie from the source, but also how directions evolve across curved geometry. The resulting vector field can be used to derive quantities such as the logarithmic map and geometric centers, discussed at the end of this section.
+This shift from scalar to vector diffusion encodes not only how far points lie from the source, but also how directions evolve across curved geometry. The resulting vector field can be used to derive quantities such as the logarithmic map and geometric centers.
 
 \paragraph{Parallel Transport.}
 Let $\gamma$ be the geodesic connecting points $p$ and $q$ on the surface. A tangent vector $v_p \in T_p\mathcal{M}$ is transported along $\gamma$ to obtain $v_q \in T_q\mathcal{M}$ such that the intrinsic angle $\varphi$ between the vector direction and the geodesic remains invariant. In flat space, the vector remains globally parallel; on curved geometry, curvature induces rotation, but the surface angle $\varphi$ relative to $\gamma$ is preserved.
 
-
-\begin{center}
+% CHANGED [H] TO [t!]
+\begin{figure}[t!]
+\centering
 \IfFileExists{paralleltransport.png}{
     \includegraphics[width=1\linewidth]{paralleltransport.png}
 }{
     \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.5cm} \textbf{Image: paralleltransport.png} \\ \small (Parallel Transport Diagram) \vspace{1.5cm}}}
 }
-\captionof{figure}{Parallel transport of a tangent vector along the geodesic $\gamma$ from $p$ to $q$. The intrinsic angle $\varphi$ between the vector and the path is preserved on the surface. Figure taken from \url{https://www.cs.cmu.edu/~kmcrane/Projects/VectorHeatMethod/index.html}.}
+\caption{Parallel transport of a tangent vector along the geodesic $\gamma$ from $p$ to $q$. The intrinsic angle $\varphi$ between the vector and the path is preserved on the surface. Figure taken from \url{https://www.cs.cmu.edu/~kmcrane/Projects/VectorHeatMethod/index.html}.}
 \label{fig:parallel_transport}
-\end{center}
-
+\end{figure}
 
 \paragraph{Discrete Formulation.}
 Each tangent vector is encoded as a complex number and collected into
@@ -250,17 +242,13 @@ This step is trivial (element-wise) and negligible in cost.
 
 The exponential map $\exp_x : T_x\mathcal{M}\!\to\!\mathcal{M}$ follows the geodesic issued from $x$ in the direction of a tangent vector $v$, and returns the point reached. The logarithmic map $\log_x : \mathcal{M}\!\to\!T_x\mathcal{M}$ inverts this process: for any point $y$, it gives the tangent vector at $x$ whose geodesic ends closest to $y$. Using the VHM, both the geodesic direction and the distance are recovered by diffusing vector fields, making the construction of $\log_x$ linear and robust.
 
-
-
-\begin{algorithm}[H]
+% CHANGED [H] TO [t!]
+\begin{algorithm}[t!]
 \caption{\textbf{Logarithmic Map via the Vector Heat Method (VHM)}}
 \label{alg:logmap-vhm}
 
 \textbf{Description.}  
-The log map $\log_x$ is approximated by polar coordinates $(r,\varphi)$ around a base point $x$. Two smooth unit vector fields are built by vector heat diffusion:
-a horizontal field $H$ (parallel transport of a reference direction at $x$) and a radial field $R$ (smoothed outward directions from $x$).  
-At each point, the angle between $H$ and $R$ gives the angular coordinate $\varphi$, while the radial coordinate $r$ is recovered as a scalar whose gradient best matches $R$, by solving $\Delta r = \nabla\!\cdot R$.  
-The log map is finally encoded as $(u,v)=r\,e^{i\varphi}$. 
+Recovers polar coordinates $(r, \varphi)$ by diffusing a reference vector (for $\varphi$) and a radial vector (for $r$).
 
 \vspace{6pt}
 \textbf{Input:} Base point $x\in\mathcal{M}$; horizontal field $H_0\in T_x\mathcal{M}$; radial field $R_0 \in \mathbb{C}^n$.\\
@@ -275,7 +263,8 @@ The log map is finally encoded as $(u,v)=r\,e^{i\varphi}$.
 \end{algorithmic}
 \end{algorithm}
 
-\begin{figure}[H]
+% CHANGED [H] TO [t!]
+\begin{figure}[t!]
     \centering
     \IfFileExists{logmap.png}{
         \includegraphics[width=\linewidth]{logmap.png}
@@ -283,7 +272,7 @@ The log map is finally encoded as $(u,v)=r\,e^{i\varphi}$.
         \framebox{\parbox{0.9\linewidth}{\centering \vspace{2cm} \textbf{Image: logmap.png} \\ \small (Log Map Comparison) \vspace{2cm}}}
     }
     \caption{Comparison of log-maps between VHM and other methods.  
-    The VHM shows significantly sharper alignment to the reference solution, while older schemes propagate angular errors across the mesh. Because errors diffuse along the surface, even a small deviation at one region contaminates distant areas, leading to global drift.}
+    The VHM shows significantly sharper alignment to the reference solution, while older schemes propagate angular errors across the mesh.}
     \label{fig:logmap}
 \end{figure}
 
@@ -294,16 +283,17 @@ Now that logarithmic maps $\log_x$ on a surface can be reliably evaluated, they 
 E_p(x) \;=\; \frac{1}{2n}\sum_{i=1}^n d(x,y_i)^p,
 \]
 where $d$ denotes the geodesic distance on $\mathcal{M}$.  
-For $p=2$, minimizers are known as Karcher means; in Euclidean space this reduces to the usual arithmetic mean. For $p=1$, minimizers are called geometric medians, which are typically more robust to outliers.
+For $p=2$, minimizers are known as Karcher means.
 
 The log map naturally provides search directions for minimizing $E_p$: for a current estimate $x$, each vector $\log_x(y_i)$ points from $x$ toward a data point $y_i$. Averaging these vectors gives a direction that moves $x$ toward all points at once. By repeatedly updating $x$ using the exponential map, a simple gradient-based algorithm that converges to a Karcher mean is obtained.
 
-\begin{algorithm}[H]
+% CHANGED [H] TO [t!]
+\begin{algorithm}[t!]
 \caption{\textbf{Karcher Mean via VHM}}
 \label{alg:karcher-mean}
 
 \textbf{Description.}
-The energy $E_2(x)=\tfrac{1}{2n}\sum_i d(x,y_i)^2$ is minimized by iteratively averaging log vectors. At each iterate $m^k$, the VHM is used to compute $\log_{m^k}(y_i)$ for all data points, these vectors are averaged to obtain an update direction, and movement along this direction is performed using the exponential map.
+The energy $E_2(x)=\tfrac{1}{2n}\sum_i d(x,y_i)^2$ is minimized by iteratively averaging log vectors. At each iterate $m^k$, the VHM is used to compute $\log_{m^k}(y_i)$ for all data points.
 
 \vspace{6pt}
 \textbf{Input:} Points $y_1,\dots,y_n\in\mathcal{M}$; step size $\tau>0$.\\
@@ -320,7 +310,8 @@ The energy $E_2(x)=\tfrac{1}{2n}\sum_i d(x,y_i)^2$ is minimized by iteratively a
 \end{algorithmic}
 \end{algorithm}
 
-\begin{figure}[H]
+% CHANGED [H] TO [t!]
+\begin{figure}[t!]
     \centering
     \IfFileExists{kercher.png}{
         \includegraphics[width=\linewidth]{kercher.png}
@@ -328,7 +319,7 @@ The energy $E_2(x)=\tfrac{1}{2n}\sum_i d(x,y_i)^2$ is minimized by iteratively a
         \framebox{\parbox{0.9\linewidth}{\centering \vspace{2cm} \textbf{Image: kercher.png} \\ \small (Karcher Mean Visualization) \vspace{2cm}}}
     }
     \caption{Karcher mean of four green points on a surface.  
-    Methods based on local log-map approximations may fail to converge or produce biased centers, whereas the VHM-based log map guides the iterates quickly to the correct symmetric location.}
+    Methods based on local log-map approximations may fail to converge, whereas the VHM-based log map guides the iterates quickly to the correct symmetric location.}
     \label{fig:karcher}
 \end{figure}
 
@@ -344,9 +335,9 @@ The Scalar Heat Method was evaluated on standard \textbf{benchmark meshes} (Stan
 
 \subsubsection{Heat Method vs. Fast Marching vs. Exact Polyhedral}
 
-Table~\ref{tab:method_comparison} presents a detailed comparison between the Scalar Heat Method, Fast Marching (Kimmel \& Sethian), and Exact Polyhedral distance (MMP algorithm), as reported in Crane et al.\ (2013). Errors are measured relative to the exact polyhedral distance as a baseline.
+Table~\ref{tab:method_comparison} presents a detailed comparison between the Scalar Heat Method, Fast Marching (Kimmel \& Sethian), and Exact Polyhedral distance (MMP algorithm).
 
-\begin{table*}[t]
+\begin{table*}[t!]
 \centering
 \small
 \begin{tabular}{@{}lccccccccc@{}}
@@ -388,8 +379,6 @@ For applications requiring distance from many different source points (shape ana
 
 As shown in Table~\ref{tab:method_comparison}, even for a single distance computation, the Heat Method outperforms Fast Marching; more importantly, updating distance for new source sets is consistently an order of magnitude faster (or more) than both Fast Marching and the exact algorithm.
 
-In contrast, Fast Marching and Exact Polyhedral methods must recompute from scratch for each new source set, with no opportunity for reuse.
-
 \subsection{Robustness: Handling Difficult Meshes}
 
 Two factors contribute to the Heat Method's robustness: (1) unconditionally stable backward Euler time discretization, and (2) elliptic rather than hyperbolic formulation (local averaging vs. sensitive wavefront propagation).
@@ -398,7 +387,8 @@ Two factors contribute to the Heat Method's robustness: (1) unconditionally stab
 
 Gaussian noise was applied to vertex positions to test stability.
 
-\begin{figure}[H]
+% CHANGED [H] TO [t!]
+\begin{figure}[t!]
     \centering
     % Clean mesh
     \begin{subfigure}{\linewidth}
@@ -438,20 +428,19 @@ Gaussian noise was applied to vertex positions to test stability.
     \label{fig:robustness}
 \end{figure}
 
-The method is stable with only 1.6\% relative error at $\sigma=0.001$. However, at high noise levels ($\sigma=0.02$), the relative error increases significantly. The noise adds high-frequency spikes that drastically increase the path length between points. This effect is similar to the Coastline Paradox: the more closely one follows the fine details of a jagged coastline, the longer it becomes.
+The method is stable with only 1.6\% relative error at $\sigma=0.001$. However, at high noise levels ($\sigma=0.02$), the relative error increases significantly. The noise adds high-frequency spikes that drastically increase the path length between points.
 
 \paragraph{Comparison with Exact Methods.}
 While the Heat Method remains stable, exact polyhedral methods can become unreliable on poor-quality meshes. The Heat Method's elliptic formulation acts as a natural regularizer, smoothing over local mesh artifacts while preserving global geometric structure.
 
 \subsubsection{Spurious Minima}
-
-In finite element approximations, mesh quality affects solution quality. A common issue is ``spurious minima''---local extrema that don't exist in the true smooth solution. Empirically, the Heat Method produces \textbf{fewer spurious minima} than Fast Marching or biharmonic distance, due to regularization from the Hodge decomposition step (Step III).
+In finite element approximations, mesh quality affects solution quality. Empirically, the Heat Method produces \textbf{fewer spurious minima} than Fast Marching or biharmonic distance, due to regularization from the Hodge decomposition step (Step III).
 
 \subsection{Time Step Parameter Sensitivity}
 
 A parameter sweep was performed on the Bunny mesh to analyze the effect of $t = m \cdot h^2$.
 
-\begin{table}[H]
+\begin{table}[b!]
 \centering
 \small
 \begin{tabular}{@{}ccc@{}}
@@ -482,8 +471,8 @@ The default $t = h^2$ works well for refined meshes; coarse meshes may benefit f
 
 The necessity of Neumann boundary conditions was verified experimentally.
 
-% [FIGURE: BOUNDARIES - VERTICAL STACK]
-\begin{figure}[H]
+% CHANGED [H] TO [t!]
+\begin{figure}[t!]
     \centering
     \begin{subfigure}{\linewidth}
         \IfFileExists{square_dirichlet.png}{
@@ -515,25 +504,22 @@ As seen in Figure \ref{fig:boundaries}, Dirichlet conditions cause the distance 
 % =====================
 \section{Discussion \& Limitations}
 
-\subsection{Role of the Time Step and Boundary Physics}
-Our experiments reveal that the time step $t$ acts as a geometric regularizer rather than strictly following the theoretical limit $t \to 0$. Larger time steps allow heat to diffuse across discretization artifacts, effectively bridging irregularities on coarse meshes. However, excessive $t$ values can smooth over genuine curvature, leading to underestimation. regarding boundaries, Neumann conditions ($\nabla u \cdot \mathbf{n} = 0$) are strictly required to insulate the mesh, allowing heat to flow along the rim. In contrast, Dirichlet conditions force artificial heat loss, warping the gradient field and invalidating the distance computation near edges.
+\subsection{Time Step and Boundary Physics}
+Experiments confirm that the time step $t$ acts as a geometric regularizer rather than strictly adhering to $t \to 0$. While larger steps allow heat to bridge discretization artifacts on coarse meshes, excessive $t$ values smooth over genuine curvature. regarding boundaries, Neumann conditions ($\nabla u \cdot \mathbf{n} = 0$) are strictly required to insulate the mesh; in contrast, Dirichlet conditions force artificial heat loss, warping the gradient field near edges.
 
-\subsection{Global and Method-Specific Limitations}
-A universal challenge in geodesic computation is the \textit{cut locus}—the set of points where the shortest path is not unique. At these locations, the distance function is continuous but non-smooth. The Heat Method handles this by averaging competing vector directions, yielding smooth gradients but losing exact locus geometry. Similarly, polyhedral methods only approximate the smooth cut locus, often diverging substantially from the true geometry.
+\subsection{Limitations and Method Selection}
+A universal challenge is the \textit{cut locus}, where the distance function is non-smooth. The Heat Method handles this by averaging vector directions, yielding smooth gradients but losing exact locus geometry.
 
-Each approach carries distinct constraints. The Heat Method's accuracy is sensitive to the time step choice and exhibits only linear convergence ($O(h)$), making it less suitable for applications requiring strict polyhedral precision. The Vector Heat Method further requires intrinsic Delaunay triangulations to ensure numerical stability. Conversely, Exact Polyhedral methods are brittle, limited to triangle meshes, and lack the precomputation benefits that make heat-based methods efficient for repeated queries.
-
-\subsection{Method Selection Guide}
-Selection depends on the application's specific needs. The Heat Method is optimal when speed and robustness are paramount, such as in shape analysis or texture synthesis involving noisy meshes and multiple source queries. In contrast, Exact Polyhedral methods are preferable for tasks demanding maximum precision on high-quality meshes, where the computational cost of single-query processing is acceptable.
+Trade-offs dictate method selection. The Heat Method is sensitive to $t$ and exhibits only linear convergence ($O(h)$), yet it is optimal for shape analysis requiring speed and robustness against noise. Conversely, Exact Polyhedral methods offer precision but are computationally expensive ($O(n^2)$), brittle, and lack the precomputation benefits that make heat-based methods efficient for repeated queries.
 
 % =====================
 % CONCLUSION
 % =====================
 \section{Conclusion}
 
-This project highlights the trade-off between the robust, approximate speed of heat diffusion and the brittle precision of exact polyhedral algorithms. The Heat Method’s shift from nonlinear hyperbolic formulations to linear elliptic systems offers order-of-magnitude speedups via prefactorization, broad generality across geometric representations, and natural regularization against noise.
+This project highlights the efficiency of shifting from nonlinear hyperbolic formulations to linear elliptic systems. We demonstrated that the Heat Method offers order-of-magnitude speedups via prefactorization and natural regularization, making it superior for general shape analysis.
 
-The Vector Heat Method extends these benefits to parallel transport, enabling robust computation of logarithmic maps and Karcher means. Future research may address current convergence limitations through higher-order discretizations, adaptive time-stepping based on local curvature, and GPU acceleration, further cementing the method's role in modern geometry processing.
+While the method trades polyhedral precision for robustness, extensions like the Vector Heat Method allow for parallel transport and logarithmic maps. Future research should address linear convergence limitations through adaptive time-stepping and higher-order discretizations to further cement the method's role in geometry processing.
 
 % =====================
 % REFERENCES
