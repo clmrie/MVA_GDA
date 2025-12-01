@@ -115,3 +115,17 @@ def heat_geodesic_from_sources(
         "delta": delta,
         "div": div,
     }
+
+
+def compute_laplacian_matrices(mesh):
+    """
+    Helper function for Experiment C (Time Breakdown).
+    Exposes the L and M matrices so we can time their construction separately.
+    """
+    V, F = mesh.V, mesh.F
+    
+    # We use the operators already imported at the top of this file
+    L = cotangent_laplacian(V, F)
+    M = lumped_mass_barycentric(V, F)
+    
+    return L, M

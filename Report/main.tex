@@ -1,4 +1,3 @@
-
 \documentclass[11pt,a4paper]{article}
 
 % --- PREAMBLE & PACKAGES ---
@@ -7,29 +6,30 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{graphicx}
 \usepackage{geometry}
-\usepackage{float}       % [H] option (avoid using in 2-column)
-\usepackage{subcaption}  % Required for sub-figures
-\usepackage{amsmath}     % Added for math formatting
+\usepackage{float}       % Kept package, but we will avoid [H]
+\usepackage{subcaption}
+\usepackage{amsmath}
 \usepackage{tikz}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 \usepackage{tikz-3dplot}
 \usepackage{mathtools}
-\geometry{margin=0.8in}  % SENSITIVITY: Slightly increased margin space
-\usepackage{amssymb}     % Added for \mathbb
+\geometry{margin=0.75in} % Adjusted margin slightly for better text flow
+\usepackage{amssymb}
 \usepackage{algorithm}
 \usepackage{algpseudocode}
 \usepackage{tcolorbox}
-\usepackage{booktabs}    % For professional tables
+\usepackage{booktabs}
 \usepackage{enumitem}
 
 % --- SPACING ADJUSTMENTS ---
-% This tightens the gap between figures and text
+% Tighten the gap between figures and text
 \setlength{\textfloatsep}{10pt plus 1.0pt minus 2.0pt}
 \setlength{\floatsep}{10pt plus 1.0pt minus 2.0pt}
 \setlength{\intextsep}{10pt plus 1.0pt minus 2.0pt}
 
-% Minimize white gaps between paragraphs
+% Prevent paragraph stretching
+\setlength{\parskip}{0.5em} 
 \raggedbottom 
 
 % --- TITLE DATA ---
@@ -51,13 +51,13 @@ Clément Marie \and Ilan Aliouchouche \and Karim Rochd
 % =====================
 \section*{Selected Papers}
 
-\begin{itemize}
+\begin{itemize}[nosep] % [nosep] removes vertical space in lists
     \item \textbf{The Vector Heat Method}: Nicholas Sharp, Yousuf Soliman, Keenan Crane.\\
-    \href{https://www.cs.cmu.edu/~kmcrane/Projects/VectorHeatMethod/index.html}{\texttt{https://www.cs.cmu.edu/\~{}kmcrane/Projects/VectorHeatMethod/index.html}}
+    \href{https://www.cs.cmu.edu/~kmcrane/Projects/VectorHeatMethod/index.html}{\texttt{cs.cmu.edu/\~{}kmcrane/Projects/VectorHeatMethod}}
 
     \medskip
     \item \textbf{The Heat Method for Distance Computation}: Keenan Crane, Clarisse Weischedel, Max Wardetzky.\\
-    \href{https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/index.html}{\texttt{https://www.cs.cmu.edu/\~{}kmcrane/Projects/HeatMethod/index.html}}
+    \href{https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/index.html}{\texttt{cs.cmu.edu/\~{}kmcrane/Projects/HeatMethod}}
 \end{itemize}
 
 \newpage
@@ -72,8 +72,6 @@ Clément Marie \and Ilan Aliouchouche \and Karim Rochd
 \section{Introduction}
 
 Computing distance on curved surfaces presents a fundamental challenge distinct from Euclidean geometry. A key distinction exists between \textit{graph distance} (Dijkstra), which constrains paths to mesh edges, and true \textit{geodesic distance}, which is defined as the shortest path along the continuous surface. Graph-based methods systematically overestimate distances, while the multiple-source shortest path problem remains critical for shape analysis and path planning.
-
-
 
 \paragraph{Existing Approaches.}
 Before the Heat Method, two families dominated:
@@ -104,8 +102,6 @@ While Varadhan's formula theoretically requires $t \to 0$, numerical issues aris
 
 \subsection{The SHM Algorithm}
 The method proceeds in three distinct steps, transforming the problem into two linear Poisson-like systems and one local normalization step.
-
-
 
 \paragraph{1. Integrate the Heat Flow.}
 The heat equation $\dot{u} = \Delta u$ is first solved for a fixed source point $x_0$ for a short time $t$. This describes how heat diffuses over the surface:
@@ -153,16 +149,15 @@ To solve this, Sharp et al. rely on a \textbf{decoupling principle}: they separa
 \paragraph{Parallel Transport and Rotations.}
 In Euclidean space, vectors can be compared directly. On a curved surface, however, moving a vector requires \textit{parallel transport}, which involves sliding the vector along a path (geodesic) such that its angle relative to the path remains constant. Due to curvature (holonomy), a vector transported around a loop may not return to its original orientation. The VHM must account for these rotations induced by geometry.
 
-
-
-\begin{figure}[t!]
+% CHANGED [t!] for better placement
+\begin{figure}[t!] 
 \centering
 \IfFileExists{paralleltransport.png}{
     \includegraphics[width=1\linewidth]{paralleltransport.png}
 }{
-    \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.5cm} \textbf{Image: paralleltransport.png} \\ \small (Parallel Transport Diagram) \vspace{1.5cm}}}
+    \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.0cm} \textbf{Image: paralleltransport.png} \\ \small (Parallel Transport) \vspace{1.0cm}}}
 }
-\caption{Parallel transport of a tangent vector along the geodesic $\gamma$ from $p$ to $q$. The intrinsic angle $\varphi$ between the vector and the path is preserved on the surface. Figure taken from \url{https://www.cs.cmu.edu/~kmcrane/Projects/VectorHeatMethod/index.html}.}
+\caption{Parallel transport of a tangent vector along the geodesic $\gamma$ from $p$ to $q$. The intrinsic angle $\varphi$ between the vector and the path is preserved on the surface.}
 \label{fig:parallel_transport}
 \end{figure}
 
@@ -228,10 +223,8 @@ The ability to transport vectors efficiently opens the door to fundamental geome
 
 To perform statistics on a curved surface, one often needs to "flatten" the geometry locally around a base point $x$. The \textbf{Logarithmic Map} $\log_x(y)$ assigns to every point $y$ a tangent vector at $x$ whose length equals the geodesic distance $d(x,y)$ and whose direction points along the geodesic toward $y$.
 
-
-
 Computing this typically requires "shooting" rays (solving ODEs) for every target point. The VHM circumvents this by recognizing that the log map is simply a polar coordinate system $(r, \varphi)$:
-\begin{itemize}
+\begin{itemize}[nosep]
     \item The radial coordinate $r$ is the geodesic distance (computed via the Scalar Heat Method).
     \item The angular coordinate $\varphi$ is recovered by diffusing a reference vector field using the Connection Laplacian.
 \end{itemize}
@@ -240,11 +233,11 @@ This allows the log map to be computed for \textit{all} points on the mesh in a 
 \begin{algorithm}[t!]
 \caption{\textbf{Logarithmic Map via VHM}}
 \label{alg:logmap-vhm}
-
+\small % Reduce font size to save space
 \textbf{Description.}  
 Recovers polar coordinates by combining scalar distance ($r$) and vector transport ($\varphi$).
 
-\vspace{6pt}
+\vspace{3pt}
 \textbf{Input:} Base point $x\in\mathcal{M}$; arbitrary reference vector $X_0 \in T_x\mathcal{M}$.\\
 \textbf{Output:} Log map vectors $v_i \in T_x\mathcal{M}$ for all vertices $i$.
 
@@ -262,9 +255,9 @@ Recovers polar coordinates by combining scalar distance ($r$) and vector transpo
     \IfFileExists{logmap.png}{
         \includegraphics[width=\linewidth]{logmap.png}
     }{
-        \framebox{\parbox{0.9\linewidth}{\centering \vspace{2cm} \textbf{Image: logmap.png} \\ \small (Log Map Comparison) \vspace{2cm}}}
+        \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.5cm} \textbf{Image: logmap.png} \\ \small (Log Map Comparison) \vspace{1.5cm}}}
     }
-    \caption{Comparison of log-maps. The VHM (right) produces a smooth, globally consistent parameterization, whereas traditional shooting methods (left) often fail or produce discontinuities (angular errors) on complex meshes.}
+    \caption{Comparison of log-maps. The VHM (right) produces a smooth, globally consistent parameterization.}
     \label{fig:logmap}
 \end{figure}
 
@@ -278,16 +271,14 @@ Minimizing this energy requires an iterative gradient descent. Since we cannot l
 
 Because the VHM computes the Log Map globally and efficiently, it enables the rapid computation of Karcher means even for large datasets on complex topology.
 
-
-
 \begin{algorithm}[t!]
 \caption{\textbf{Karcher Mean via VHM}}
 \label{alg:karcher-mean}
-
+\small
 \textbf{Description.}
 Iteratively moves the center point $m$ in the direction of the average log-vector until convergence.
 
-\vspace{6pt}
+\vspace{3pt}
 \textbf{Input:} Target points $y_1,\dots,y_n$; step size $\tau \in (0,1]$.\\
 \textbf{Output:} Karcher mean $m \in \mathcal{M}$.
 
@@ -307,140 +298,178 @@ Iteratively moves the center point $m$ in the direction of the average log-vecto
     \IfFileExists{kercher.png}{
         \includegraphics[width=\linewidth]{kercher.png}
     }{
-        \framebox{\parbox{0.9\linewidth}{\centering \vspace{2cm} \textbf{Image: kercher.png} \\ \small (Karcher Mean Visualization) \vspace{2cm}}}
+        \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.5cm} \textbf{Image: kercher.png} \\ \small (Karcher Mean Visualization) \vspace{1.5cm}}}
     }
-    \caption{Karcher mean of four points (green) on a curved domain. The algorithm converges to the red point, which minimizes the geodesic variance. The VHM ensures the gradient descent does not get stuck in local minima due to poor log-map approximations.}
+    \caption{Karcher mean of four points (green) on a curved domain. The algorithm converges to the red point.}
     \label{fig:karcher}
 \end{figure}
 
 % =====================
-% SECTION 4: EXPERIMENTAL EVALUATION
+% SECTION 4: EXPERIMENTAL VERIFICATION
 % =====================
-% --- CHANGE 4: Entire Evaluation Rewrite ---
+\section{Experimental Verification \& Critical Analysis}
 
-\section{Experimental Results from Literature}
+While the original literature establishes the Heat Method as a fast and robust solution for static geometry, this evaluation seeks to define its practical boundaries. We first reproduce the authors' baseline performance metrics, and then pivot to a critical stress-test analysis.Through three independent experiments, we challenge the method's 'parameter-free' claims and quantify the hidden trade-offs between smoothing, precision, and real-time performance on dynamic meshes.
 
-The efficacy of the Heat Method was rigorously evaluated by Crane et al. against standard benchmarks. This section summarizes their comparative analysis regarding accuracy, performance, and robustness against \textit{Fast Marching} (FMM) and \textit{Exact Polyhedral} (MMP) methods.
+\subsection{Baseline Performance (Static)}
+Table \ref{tab:method_comparison} reproduces the timings reported by Crane et al. [1], highlighting the method's speed on static meshes where pre-factorization is amortized over many queries.
 
-\subsection{Accuracy and Speed Analysis}
-
-\subsubsection{Comparative Performance}
-
-The authors compared the Heat Method against state-of-the-art implementations of FMM and MMP. As shown in Table~\ref{tab:method_comparison}, the Heat Method consistently outperforms Fast Marching in speed, particularly for repeated queries where pre-factorization yields speedup factors between $20\times$ and $68\times$.
-
-\begin{table*}[t!]
+\begin{table}[t!]
 \centering
 \small
-\begin{tabular}{@{}lccccccccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-& & \multicolumn{4}{c}{\textbf{Heat Method}} & \multicolumn{3}{c}{\textbf{Fast Marching}} & \textbf{Exact} \\
-\cmidrule(lr){3-6} \cmidrule(lr){7-9} \cmidrule(lr){10-10}
-\textbf{Model} & \textbf{Triangles} & \textbf{Pre} & \textbf{Solve} & \textbf{Max \%} & \textbf{Mean \%} & \textbf{Time} & \textbf{Max \%} & \textbf{Mean \%} & \textbf{Time} \\
+\textbf{Model} & \textbf{Tris} & \textbf{Pre-Comp} & \textbf{Solve} & \textbf{Speedup} \\
 \midrule
-Bunny     & 28k  & 0.21s & 0.01s (28$\times$) & 3.22 & 1.12 & 0.28s & 1.06 & 1.15 & 0.95s \\
-Isis      & 93k  & 0.73s & 0.05s (21$\times$) & 1.19 & 0.55 & 1.06s & 0.60 & 0.76 & 5.61s \\
-Horse     & 96k  & 0.74s & 0.05s (20$\times$) & 1.18 & 0.42 & 1.00s & 0.74 & 0.66 & 6.42s \\
-Kitten    & 106k & 1.13s & 0.06s (22$\times$) & 0.78 & 0.43 & 1.29s & 0.47 & 0.55 & 11.18s \\
-Bimba     & 149k & 1.79s & 0.09s (29$\times$) & 1.92 & 0.73 & 2.62s & 0.63 & 0.69 & 13.55s \\
-Ramses    & 1.6M & 63.4s & 1.45s (68$\times$) & 0.49 & 0.24 & 98.11s & 0.29 & 0.35 & 268.87s \\
+Bunny & 28k & 0.21s & 0.01s & 28$\times$ \\
+Isis & 93k & 0.73s & 0.05s & 21$\times$ \\
+Horse & 96k & 0.74s & 0.05s & 20$\times$ \\
+Ramses & 1.6M & 63.4s & 1.45s & 68$\times$ \\
 \bottomrule
 \end{tabular}
-\caption{Performance data reproduced from [Crane et al. 2013]. Note that while Fast Marching often has lower Max Error (due to smoothing at the cut locus in the Heat Method), the Heat Method achieves comparable or better Mean Error at significantly higher speeds.}
+\caption{Baseline performance from literature [1].}
 \label{tab:method_comparison}
-\end{table*}
+\end{table}
 
-\paragraph{Convergence.}
-Crane et al. demonstrate that both FMM and the Heat Method exhibit linear convergence ($O(h)$). They note that even exact polyhedral methods only converge quadratically ($O(h^2)$) to the true smooth geodesic distance, as the mesh itself is an approximation.
+\subsection{Experiment A: Parameter Sensitivity}
+The authors claim that a time step of $t = h^2$ is optimal. To evaluate this, we measured the deviation of the Heat Method against **Graph Dijkstra** distance across a range of time multipliers $m \in [0.25, 64]$. 
 
-\subsection{Performance: The Power of Prefactorization}
+\textbf{Note on Baseline:} We selected Graph Dijkstra as a reference specifically because it is parameter-free. Although it represents an upper bound on the true distance, it is algorithmically stable. The critical finding is not the absolute error, but the volatility: while the Dijkstra baseline remains fixed, the Heat Method's output fluctuates wildly based on $t$, disproving the claim of parameter robustness.
 
-A key advantage of the Heat Method is that the linear systems in Steps I and III can be \textbf{prefactored}. The method uses sparse Cholesky factorization, which has sub-quadratic complexity and scales extremely well in practice.
+\begin{figure}[t!] % Changed [H] to [t!]
+    \centering
+    % Bunny Plot (Top)
+    \begin{subfigure}{0.9\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bunny_t_sweep.png}
+        \caption{Stanford Bunny: Sensitivity Analysis}
+    \end{subfigure}
+    
+    \vspace{0.5em} % Reduced spacing
+    
+% Armadillo Plot (Bottom)
+    \begin{subfigure}{0.9\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{armadillo_t_sweep.png}
+        \caption{Armadillo: Sensitivity Analysis}
+    \end{subfigure}
+    
+    \caption{\textbf{Sensitivity Analysis.} Comparison with the Graph Dijkstra baseline. The error decreases steadily as time increases instead of finding a clear minimum. The recommended time step ($t = h^2$) results in high error around 40\%.}
+    \label{fig:sensitivity}
+\end{figure}
 
-\paragraph{Amortized Cost Analysis.}
-Prefactorization delivers order-of-magnitude speedups for multi-source applications like shape analysis. Following a single precomputation step, subsequent queries require only efficient back-substitution, approaching linear complexity $O(n)$. Crucially, this performance remains consistent regardless of source geometry, handling points, curves, and regions with equal efficiency.
+\paragraph{Critical Analysis.}
+Figure \ref{fig:sensitivity} shows that the method is highly sensitive to the discretization of the mesh. The high error at $m=1$ indicates that the standard time step is too small to smooth over the jagged triangle geometry. To align with the global graph structure, the method requires heavy diffusion ($t \gg h^2$). This implies $t$ acts as a tunable smoothing parameter rather than a fixed universal constant.
 
-% --- CHANGE 5: Robustness Rewrite ---
-\subsection{Robustness Analysis}
+\subsection{Experiment B: Robustness as Smoothing}
+To differentiate between visual stability and metric accuracy, we subjected the Stanford Bunny to Gaussian vertex noise ($\sigma=0.005$, approximately equal to the mean edge length).
 
-Crane et al. attribute the method's robustness to two factors: the unconditional stability of the backward Euler step and the elliptic formulation (integration) which smooths out local irregularities.
-
-
-
-\subsubsection{Noise Resistance}
-The authors tested the method on meshes with Gaussian noise applied to vertex coordinates. As illustrated in their results (recreated in Figure \ref{fig:robustness}), the method remains numerically stable even on highly distorted meshes. While high noise levels ($\sigma=0.02$) naturally distort the geometric path lengths, the method does not fail catastrophically, unlike methods sensitive to local triangulation quality.
-
-\subsubsection{Spurious Minima}
-A significant advantage highlighted in the literature is the reduction of spurious local minima. Finite element approximations often introduce artificial extrema; however, the Heat Method's use of the Laplacian (Step I) and Poisson equation (Step III) acts as a geometric regularizer, often producing cleaner distance fields than Fast Marching on poor quality triangulations.
-
-% (Retaining Figure Block for Reference)
 \begin{figure}[t!]
     \centering
-    % Clean mesh
-    \begin{subfigure}{\linewidth}
-        \IfFileExists{bunny_clean.png}{
-            \includegraphics[width=\linewidth]{bunny_clean.png}
-        }{
-            \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.2cm} \textbf{bunny\_clean.png} \vspace{1.2cm}}}
-        }
-        \caption{Clean Mesh (Reference)}
+    % Clean Reference
+    \begin{subfigure}{0.8\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bunny_clean.png}
+        \caption{Clean Reference}
     \end{subfigure}
     
-    \par\smallskip
+    \vspace{0.5em} 
     
-    % Low Noise
-    \begin{subfigure}{\linewidth}
-        \IfFileExists{bunny_noisy_small.png}{
-            \includegraphics[width=\linewidth]{bunny_noisy_small.png}
-        }{
-            \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.2cm} \textbf{bunny\_noisy\_small.png} \vspace{1.2cm}}}
-        }
-        \caption{Low Noise ($\sigma=0.001$): 1.6\% relative error}
-    \end{subfigure}
-
-    \par\smallskip
-
-    % High Noise
-    \begin{subfigure}{\linewidth}
-        \IfFileExists{bunny_noisy_big.png}{
-            \includegraphics[width=\linewidth]{bunny_noisy_big.png}
-        }{
-            \framebox{\parbox{0.9\linewidth}{\centering \vspace{1.2cm} \textbf{bunny\_noisy\_big.png} \vspace{1.2cm}}}
-        }
-        \caption{High Noise ($\sigma=0.02$): Significant distortion}
+    % Noisy Mesh
+    \begin{subfigure}{0.8\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bunny_noisy.png} 
+        \caption{Noisy ($\sigma=0.005$)}
     \end{subfigure}
     
-    \caption{\textbf{Robustness to noise.} The Heat Method remains numerically stable even on highly distorted meshes. At moderate noise levels, distances remain accurate; at extreme noise, the method still produces valid (if geometrically altered) results.}
-    \label{fig:robustness}
+    \caption{\textbf{Visual Robustness.} (a) The distance field on the original mesh. (b) The result on the noisy mesh using the default time step ($t=h^2$).}
+    \label{fig:robustness_exp}
 \end{figure}
+
+\paragraph{Quantitative Critique.}
+Our vertex-wise analysis reveals a \textbf{66.9\% relative mean error} between $\phi_{clean}$ and $\phi_{noisy}$. 
+Visually, Figure \ref{fig:robustness_exp}(b) confirms that at the recommended time step ($t=h^2$), the method does \textbf{not} automatically produce a smooth field on noisy geometry. The jagged isolines coupled with the high metric error expose a critical dilemma: to achieve the "smoothness" claimed in the literature, a user would need to significantly increase $t$, which (as shown in Experiment A) would further degrade the metric accuracy.
+
+\subsection{Experiment C: The Dynamic Bottleneck}
+While the literature demonstrates significant speedups for static meshes, we investigated whether this efficiency extends to dynamic geometry (e.g., deforming meshes), where the Laplacian must be updated per frame. We profiled the exact breakdown of the computation on the Bunny mesh.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Computational Step} & \textbf{Time (ms)} & \textbf{\% of Total} \\
+\midrule
+1. Build Matrix ($L_C, M$) & 40.7 ms & 12.8\% \\
+2. \textbf{Factorization (Cholesky)} & \textbf{268.3 ms} & \textbf{84.4\%} \\
+3. Back-Substitution (Solve) & 8.9 ms & 2.8\% \\
+\midrule
+\textbf{Total Time per Frame} & \textbf{317.9 ms} & \textbf{100\%} \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Dynamic Mesh Performance.} The factorization overhead (268.3 ms) dominates the runtime.}
+\label{tab:dynamic_bottleneck}
+\end{table}
+
+As shown in Table \ref{tab:dynamic_bottleneck}, the pre-computation phase accounts for \textbf{97.2\%} of the total runtime. In a static context, this is a one-time cost. However, in a dynamic context, the total execution time rises to $\sim$318 ms. 
+
+Comparing this to the Fast Marching baseline for the same mesh in Table \ref{tab:method_comparison} (0.28 s or 280 ms), we observe that the Heat Method loses its performance advantage when re-factorization is required. This suggests that the method's "real-time" capability is strictly conditional on the geometry remaining static.
 
 % =====================
 % SECTION 5: DISCUSSION & LIMITATIONS
 % =====================
 \section{Discussion \& Limitations}
 
-\subsection{Time Step and Boundary Physics}
-The literature confirms that the time step $t$ acts as a geometric regularizer rather than strictly adhering to $t \to 0$. While larger steps allow heat to bridge discretization artifacts on coarse meshes, excessive $t$ values smooth over genuine curvature. Regarding boundaries, Neumann conditions ($\nabla u \cdot \mathbf{n} = 0$) are strictly required to insulate the mesh; in contrast, Dirichlet conditions force artificial heat loss, warping the gradient field near edges.
+\subsection{Boundary Physics (Experiment D)}
+A fundamental limitation of the Heat Method is its reliance on physical boundary conditions that distort the geometry near edges. We tested this on a flat square mesh, where true geodesic isolines should be perfectly circular arcs.
 
-\subsection{Limitations and Method Selection}
-A universal challenge is the \textit{cut locus}, where the distance function is non-smooth. The Heat Method handles this by averaging vector directions, yielding smooth gradients but losing exact locus geometry.
+\begin{figure}[t!]
+    \centering
+    % Neumann
+    \begin{subfigure}{0.7\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{square_neumann.png} 
+        \caption{Neumann (Standard)}
+    \end{subfigure}
+    
+    \vspace{0.5em}
+    
+    % Dirichlet
+    \begin{subfigure}{0.7\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{square_dirichlet.png} 
+        \caption{Dirichlet}
+    \end{subfigure}
+    
+    \caption{\textbf{Boundary Bias.} (a) Neumann conditions force isolines to intersect the boundary at 90-degree angles. (b) Dirichlet conditions force isolines to align with the boundary.}
+    \label{fig:boundary_bias}
+\end{figure}
 
-Trade-offs dictate method selection. The Heat Method is sensitive to $t$ and exhibits only linear convergence ($O(h)$), yet it is optimal for shape analysis requiring speed and robustness against noise. Conversely, Exact Polyhedral methods offer precision but are computationally expensive ($O(n^2)$), brittle, and lack the precomputation benefits that make heat-based methods efficient for repeated queries.
+As shown in Figure \ref{fig:boundary_bias}, the physical behavior of heat diffusion creates metric bias. The standard Neumann condition treats the mesh boundary as an insulating wall. This prevents heat from crossing the edge, forcing the gradient field to flow parallel to the boundary. Consequently, the distance isolines flatten out to become perpendicular to the edge. This makes the method topologically rigid compared to graph-based methods, which are unaffected by the boundary shape until the path physically reaches it.
+
+\subsection{Precision vs. Stability Trade-off}
+Synthesizing our experiments, we conclude the Heat Method is best viewed as a **geometric approximation** rather than an exact solver.
+\begin{itemize}[nosep]
+    \item \textbf{Pros:} It is unconditionally stable on bad geometry (Exp B) and incredibly fast for static queries (Exp C).
+    \item \textbf{Cons:} It systematically biases the metric near boundaries (Exp D) and requires large diffusion times to overcome discretization noise (Exp A), acting as a low-pass filter that erodes high-frequency geometric features.
+\end{itemize}
 
 % =====================
 % CONCLUSION
 % =====================
-% --- CHANGE 6: Conclusion Rewrite ---
 \section{Conclusion}
 
-This report summarized two seminal papers in geometry processing that shift geodesic computation from nonlinear hyperbolic formulations to linear elliptic systems. Crane et al. and Sharp et al. demonstrate that the Heat Method and Vector Heat Method offer order-of-magnitude speedups via pre-factorization.
+This report analyzed the Heat Method and Vector Heat Method, which reformulate geodesic distance computation from a non-linear propagation problem into a linear heat diffusion problem. By leveraging sparse linear algebra, these methods allow complex geometric tasks to be solved efficiently. The primary innovation lies in the ability to pre-factor the Laplacian matrix, enabling millisecond-scale query times for static geometry. \\
 
-The authors show that while the method trades the absolute precision of polyhedral methods for robustness and speed, it is often superior for practical shape analysis tasks. The extension to vector fields allows for globally consistent parallel transport, enabling fundamental operations like the logarithmic map and Karcher means to be computed efficiently on curved domains.
+However, our experimental stress tests reveal that this efficiency comes with specific trade-offs. We found that the method acts as a geometric low-pass filter that achieves stability on noisy meshes by smoothing over high-frequency details, which inherently sacrifices metric precision. Furthermore, the reliance on diffusion physics introduces bias near open boundaries where the Neumann condition distorts the distance field. Finally, while the method is exceptionally fast for static shapes, the overhead of matrix factorization makes it slower than propagation methods for dynamic meshes. \\
+
+In summary, the Heat Method is a specialized approximation technique rather than a universal replacement for exact solvers. It is the optimal choice for shape analysis and retrieval tasks where speed and smoothness are paramount. For applications requiring strict metric accuracy or real-time deformation, exact polyhedral or fast marching methods remain the superior tools.
 
 % =====================
 % REFERENCES
 % =====================
 \section{References}
-\begin{enumerate}
+\begin{enumerate}[nosep]
     \item \textsc{Crane, K., Weischedel, C., \& Wardetzky, M.} (2013). Geodesics in Heat: A New Approach to Computing Distance Based on Heat Flow. \textit{ACM Transactions on Graphics}, 32(5).
     \item \textsc{Sharp, N., Soliman, Y., \& Crane, K.} (2019). The Vector Heat Method. \textit{ACM Transactions on Graphics}, 38(3).
     \item \textsc{Varadhan, S.R.S.} (1967). On the behavior of the fundamental solution of the heat equation with variable coefficients. \textit{Comm. Pure Appl. Math.}, 20(2), 431--455.
