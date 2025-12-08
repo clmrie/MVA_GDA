@@ -4,12 +4,12 @@ sys.path.insert(0, os.path.abspath("."))
 
 import trimesh
 
-from mesh import Mesh
-from operators.laplacian import cotangent_laplacian
-from operators.mass_matrix import lumped_mass_barycentric
-from operators.gradient import per_face_grad_barycentric
-from operators.divergence import divergence_vertex_from_face_field
-from heat_method import heat_geodesic_from_sources
+from src.mesh import Mesh
+from src.operators.laplacian import cotangent_laplacian
+from src.operators.mass_matrix import lumped_mass_barycentric
+from src.operators.gradient import per_face_grad_barycentric
+from src.operators.divergence import divergence_vertex_from_face_field
+from src.heat_method import heat_geodesic_from_sources
 
 BUNNY = os.path.join("data", "bunny", "reconstruction", "bun_zipper.ply")
 

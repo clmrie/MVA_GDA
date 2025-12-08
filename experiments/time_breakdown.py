@@ -5,8 +5,8 @@ import numpy as np
 import scipy.sparse.linalg
 
 sys.path.insert(0, os.path.abspath("."))
-from mesh import Mesh
-from heat_method import compute_laplacian_matrices
+from src.mesh import Mesh
+from src.heat_method import compute_laplacian_matrices
 
 def get_mean_edge_length(V, F):
     """

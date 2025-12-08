@@ -7,8 +7,8 @@ from scipy.sparse.csgraph import dijkstra
 
 sys.path.insert(0, os.path.abspath("."))
 
-from mesh import Mesh
-from heat_method import heat_geodesic_from_sources
+from src.mesh import Mesh
+from src.heat_method import heat_geodesic_from_sources
 
 
 def edge_graph(V: np.ndarray, F: np.ndarray) -> csr_matrix:

@@ -5,8 +5,8 @@ sys.path.insert(0, os.path.abspath("."))
 import matplotlib.pyplot as plt
 from matplotlib.tri import Triangulation
 
-from mesh import Mesh
-from heat_method import heat_geodesic_from_sources
+from src.mesh import Mesh
+from src.heat_method import heat_geodesic_from_sources
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
