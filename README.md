@@ -1,4 +1,4 @@
-# Geometric Data Analyis Project: Vector and Heat Methods
+# Geometric Data Analysis Project: Vector and Heat Methods
 
 This repository contains the complete implementation and experimental analysis for a project reproducing and critically evaluating the **Scalar Heat Method** (SHM) and the **Vector Heat Method** (VHM) for efficient geometry processing.
 
