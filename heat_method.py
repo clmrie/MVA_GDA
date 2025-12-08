@@ -124,7 +124,6 @@ def compute_laplacian_matrices(mesh):
     """
     V, F = mesh.V, mesh.F
     
-    # We use the operators already imported at the top of this file
     L = cotangent_laplacian(V, F)
     M = lumped_mass_barycentric(V, F)
     
