@@ -4,6 +4,9 @@ This repository contains the complete implementation and experimental analysis f
 
 The core goal is to replace complex, slow path-tracing algorithms with sparse linear algebra solutions to compute geodesic distance, parallel transport, and geometric centers (Karcher Means) on curved surfaces.
 
+* **Scalar Geodesics:** [The Heat Method for Distance Computation](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/)
+* **Vector Transport:** [The Vector Heat Method (arXiv)](https://arxiv.org/pdf/1805.09170)
+
 ## Key Features
 
 * **Scalar Heat Method (SHM):** Efficiently computes geodesic distance using two linear Poisson equations.
