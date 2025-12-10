@@ -26,10 +26,8 @@ def main():
     F = data['faces']
     logmap_uv = data['logmap_uv']
 
-    # CRITICAL CHANGE: We DO NOT load 'r' (distance) or 'vec_X' (vectors).
-    # If we don't load them, Polyscope CANNOT show them.
+    # We deliberately DO NOT load 'r' or 'vectors_X' to force the clean view.
 
-    # Check for corruption
     if np.any(np.isnan(V)) or np.any(np.isnan(logmap_uv)):
         print("❌ CRITICAL ERROR: Data contains NaNs.")
         return
@@ -43,14 +41,14 @@ def main():
     ps_mesh = ps.register_surface_mesh("LogMap Mesh", V, F)
 
     # Add ONLY the Log Map Grid
-    # We use 'checkerboard' style here as it is often more visible than 'grid' on white meshes
+    # CHANGED: 'checkerboard' -> 'checker' to match your Polyscope version
     ps_mesh.add_parameterization_quantity("Log Map Grid", logmap_uv, 
                                           coords_type='world', 
                                           enabled=True, 
-                                          viz_style='checkerboard',
+                                          viz_style='checker', 
                                           cmap='blues')
 
-    print("✅ Opening viewer window. You should ONLY see the grid/checkerboard.")
+    print("✅ Opening viewer window. You should ONLY see the checkerboard.")
     ps.show()
 
 if __name__ == "__main__":
