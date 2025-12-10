@@ -11,6 +11,7 @@ src_dir = os.path.join(current_dir, 'src')
 sys.path.append(src_dir)
 # --------------------------------------------------
 
+# Now we can safely import from src/
 try:
     from heat_method import heat_geodesic_from_sources
     from vector_method import vector_heat_transport
@@ -124,6 +125,11 @@ def main():
     parser.add_argument('mesh_path', nargs='?', default=default_path, 
                         help=f"Path to input mesh. Defaults to {default_path}")
     parser.add_argument('--out', default='logmap_data.npz', help="Output NPZ file")
+    
+    # --- Source Selection Parameter ---
+    parser.add_argument('--source_mode', default='extreme', 
+                        choices=['center', 'extreme', 'manual'], 
+                        help="Source selection: 'extreme' (furthest tip), 'center' (centroid-closest), 'manual' (index 0).")
     args = parser.parse_args()
     
     if not os.path.exists(args.mesh_path):
@@ -131,22 +137,16 @@ def main():
         return
 
     print(f"Loading mesh: {args.mesh_path}")
-    # Load raw mesh
     mesh = trimesh.load(args.mesh_path, process=False)
     
-    # --- MESH CLEANUP (The Fix) ---
+    # --- MESH CLEANUP (Robustness) ---
     print(f"Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     
-    # 1. Merge duplicate vertices (zipping the mesh)
-    print("Merging duplicate vertices...")
+    print("Merging duplicate vertices and cleaning mesh...")
     mesh.merge_vertices()
-    
-    # 2. Remove degenerate faces (area ~ 0)
-    print("Removing degenerate faces...")
     mesh.remove_duplicate_faces()
     mesh.remove_degenerate_faces()
     
-    # 3. Keep largest component
     print("Checking connectivity...")
     components = mesh.split(only_watertight=False)
     if len(components) > 1:
@@ -154,13 +154,21 @@ def main():
         mesh = max(components, key=lambda m: len(m.vertices))
         
     print(f"Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
-    # -----------------------------
+    # ---------------------------------
     
-    # Robust Source Selection
+    # --- SOURCE SELECTION LOGIC ---
     centroid = mesh.vertices.mean(axis=0)
     dists = np.linalg.norm(mesh.vertices - centroid, axis=1)
-    source_idx = np.argmin(dists) 
-    print(f"Source Index (Centroid-closest): {source_idx}")
+
+    if args.source_mode == 'center':
+        source_idx = np.argmin(dists)
+    elif args.source_mode == 'extreme':
+        source_idx = np.argmax(dists) 
+    elif args.source_mode == 'manual':
+        source_idx = 0 
+        
+    print(f"Source Mode: {args.source_mode.upper()} (Index: {source_idx})")
+    # ------------------------------
     
     r, theta, X, G = compute_polar_coordinates(mesh, source_idx)
     
@@ -168,7 +176,7 @@ def main():
         print("Calculation failed.")
         return
 
-    # Compute UV
+    # Compute UV (Log Map Coordinates)
     u = r * np.cos(theta)
     v = r * np.sin(theta)
     logmap_uv = np.stack([u, v], axis=1)
