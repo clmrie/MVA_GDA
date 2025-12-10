@@ -32,12 +32,11 @@ def main():
 
     # --- THE FIX: NORMALIZE THE SCALE ---
     # We divide the coordinates by the maximum distance.
-    # This shrinks the numbers from ~100.0 down to ~1.0.
-    # Result: The checkerboard squares become 100x bigger and visible!
+    # This acts like a "zoom" for the texture, making the squares bigger.
     max_val = np.max(np.abs(logmap_uv))
     if max_val > 0:
         logmap_uv = logmap_uv / max_val
-        # Multiply by 10 to get a nice 10x10 grid look
+        # Multiply by 10 to get a nice grid with about 10 squares across
         logmap_uv *= 10.0 
     # ------------------------------------
 
@@ -48,8 +47,7 @@ def main():
 
     ps_mesh = ps.register_surface_mesh("LogMap Mesh", V, F)
 
-    # We use 'viridis' color map now, which is high-contrast (Yellow/Blue)
-    # This ensures you won't confuse it with the pink distance field.
+    # We use 'viridis' (Blue/Green/Yellow) so it is high-contrast
     ps_mesh.add_parameterization_quantity("Log Map Grid", logmap_uv, 
                                           coords_type='world', 
                                           enabled=True, 
