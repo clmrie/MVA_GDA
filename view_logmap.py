@@ -17,37 +17,45 @@ def main():
         print("   Make sure you are running this command in the same folder as the .npz file.")
         return
 
+    # --- Manual Reset of Settings ---
+    # Delete the persistent config file to force a clean view reset
+    config_file = "imgui.ini"
+    if os.path.exists(config_file):
+        try:
+            print(f"🧹 Deleting old config file ({config_file}) to force view reset.")
+            os.remove(config_file)
+        except Exception as e:
+            print(f"⚠️  Warning: Could not delete {config_file}: {e}")
+            
+    # --- End Manual Reset ---
+
     print(f"📂 Loading data from {args.file}...")
     try:
         data = np.load(args.file)
         # Extract data arrays
         V = data['vertices']
         F = data['faces']
-        r = data['r']                 # Geodesic Distance
-        theta = data['theta']         # Polar Angle
-        logmap_uv = data['logmap_uv'] # 2D Log Map coordinates (u, v)
-        vec_X = data['vectors_X']     # Parallel Transport Vectors
+        r = data['r']
+        theta = data['theta']
+        logmap_uv = data['logmap_uv']
+        vec_X = data['vectors_X']
         
         print(f"   - Vertices: {V.shape}")
         print(f"   - Faces:    {F.shape}")
     except KeyError as e:
         print(f"❌ Error loading data: Missing key {e}.")
-        print("   Is the .npz file corrupted or from an old version of the script?")
         return
 
-    # 3. Check for NaNs before crashing the viewer
+    # 3. Check for NaNs (as a final safety check)
     if np.any(np.isnan(V)) or np.any(np.isnan(logmap_uv)):
-        print("❌ CRITICAL ERROR: The data contains NaNs (Not a Number).")
-        print("   This means the computation on the cluster failed.")
-        print("   Please re-run generate_logmap.py on the cluster with the fixed script.")
+        print("❌ CRITICAL ERROR: Data contains NaNs. Computation failed.")
         return
 
-    # 4. Initialize Polyscope (RESETTING SETTINGS)
-    print("🎨 Initializing Polyscope (Resetting view)...")
+    # 4. Initialize Polyscope (without the broken argument)
+    print("🎨 Initializing Polyscope (Clean start)...")
     
-    # We use a dummy config file name to force Polyscope to ignore old settings (imgui.ini)
-    # This ensures the window starts fresh every time.
-    ps.init(config_file="temp_reset_polyscope.ini")
+    # We now call init() without any arguments, relying on the file deletion above.
+    ps.init()
     
     ps.set_up_dir("z_up") 
     ps.set_ground_plane_mode("shadow_only")
@@ -58,8 +66,6 @@ def main():
     # 6. Add Quantities for Visualization
     
     # A. The Main Event: Log Map Parameterization (The Grid)
-    # This applies a grid texture based on the (u,v) coordinates we computed.
-    # We explicitly enable this one.
     ps_mesh.add_parameterization_quantity("4. Log Map Grid", logmap_uv, 
                                           coords_type='world', 
                                           enabled=True, 
@@ -67,7 +73,6 @@ def main():
                                           cmap='blues')
 
     # B. Scalar Fields (Distance and Angle) - DISABLED by default
-    # You can enable them manually in the UI if needed for the report.
     ps_mesh.add_scalar_quantity("1. Geodesic Distance (r)", r, enabled=False, cmap='turbo')
     ps_mesh.add_scalar_quantity("2. Polar Angle (theta)", theta, enabled=False, cmap='phase')
 
@@ -81,13 +86,6 @@ def main():
     # 7. Show the GUI
     print("✅ Opening viewer window...")
     ps.show()
-    
-    # Cleanup dummy file
-    if os.path.exists("temp_reset_polyscope.ini"):
-        try:
-            os.remove("temp_reset_polyscope.ini")
-        except:
-            pass
 
 if __name__ == "__main__":
     main()
