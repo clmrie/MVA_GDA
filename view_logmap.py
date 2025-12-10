@@ -37,7 +37,7 @@ def main():
     if max_val > 0:
         logmap_uv = logmap_uv / max_val
         # Multiply by 10 to get a nice grid with about 10 squares across
-        logmap_uv *= 10.0 
+        logmap_uv *= 2.0 
     # ------------------------------------
 
     print("🎨 Initializing Polyscope...")
