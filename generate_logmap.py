@@ -148,7 +148,21 @@ def main():
         return
 
     print(f"Loading mesh: {args.mesh_path}")
-    mesh = trimesh.load(args.mesh_path, process=False)
+    # Load raw mesh
+    mesh_raw = trimesh.load(args.mesh_path, process=False)
+
+    # --- FIX: Keep only the largest connected component ---
+    # This prevents 'Matrix is exactly singular' errors caused by disconnected noise
+    print("Checking mesh connectivity...")
+    components = mesh_raw.split(only_watertight=False)
+    if len(components) > 1:
+        print(f"⚠️  Mesh has {len(components)} disconnected parts. Keeping the largest one to ensure stability.")
+        mesh = max(components, key=lambda m: len(m.vertices))
+    else:
+        mesh = mesh_raw
+    
+    print(f"Processing mesh with {len(mesh.vertices)} vertices and {len(mesh.faces)} faces.")
+    # --------------------------------------------------------
     
     # --- Robust Source Selection ---
     # Find the vertex closest to the center of mass (safe bet)
