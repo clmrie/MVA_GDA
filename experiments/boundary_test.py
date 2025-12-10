@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.abspath("."))
 
-from mesh import Mesh
-from heat_method import heat_geodesic_from_sources
+from src.mesh import Mesh
+from src.heat_method import heat_geodesic_from_sources
 from experiments.visualize import plot_isolines
 
 def create_square_mesh(resolution=30):

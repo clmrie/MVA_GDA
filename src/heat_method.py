@@ -4,10 +4,10 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-from operators.laplacian import cotangent_laplacian
-from operators.mass_matrix import lumped_mass_barycentric
-from operators.gradient import gradient_scalar_per_face
-from operators.divergence import divergence_vertex_from_face_field
+from src.operators.laplacian import cotangent_laplacian
+from src.operators.mass_matrix import lumped_mass_barycentric
+from src.operators.gradient import gradient_scalar_per_face
+from src.operators.divergence import divergence_vertex_from_face_field
 
 
 def _unique_edges(F: np.ndarray) -> np.ndarray:
@@ -124,7 +124,6 @@ def compute_laplacian_matrices(mesh):
     """
     V, F = mesh.V, mesh.F
     
-    # We use the operators already imported at the top of this file
     L = cotangent_laplacian(V, F)
     M = lumped_mass_barycentric(V, F)
     

@@ -1,7 +1,7 @@
 
 # operators/divergence.py
 import numpy as np
-from operators.gradient import per_face_grad_barycentric
+from src.operators.gradient import per_face_grad_barycentric
 
 def divergence_vertex_from_face_field(V: np.ndarray, F: np.ndarray, X: np.ndarray) -> np.ndarray:
     """
