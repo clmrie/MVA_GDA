@@ -1,95 +1,172 @@
-
-
+# vector_method.py
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
-from heat_method import compute_laplacian_matrices, _typical_edge_length
+import trimesh
+
+EPS = 1e-12
+
+# ---------- geometry helpers ----------
+
+def build_lumped_mass(V, F):
+    n = V.shape[0]
+    M_diag = np.zeros(n, dtype=float)
+    # triangle areas
+    v0 = V[F[:, 0]]
+    v1 = V[F[:, 1]]
+    v2 = V[F[:, 2]]
+    face_areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
+    # accumulate 1/3 * area at each incident vertex
+    for k, tri in enumerate(F):
+        area = face_areas[k]
+        M_diag[tri] += area / 3.0
+    return sp.diags(M_diag), face_areas
+
+def vertex_frames_from_normals(V, N):
+    """
+    Given normals N (n,3), return tangent frames t1,t2 per vertex (n,3).
+    """
+    n = V.shape[0]
+    t1 = np.zeros((n,3), dtype=float)
+    t2 = np.zeros((n,3), dtype=float)
+    # global reference
+    ref = np.array([0.0, 0.0, 1.0])
+    for i in range(n):
+        nrm = N[i]
+        r = ref
+        if abs(np.dot(nrm, r)) > 0.9:
+            r = np.array([0.0, 1.0, 0.0])
+        a = np.cross(nrm, r)
+        an = np.linalg.norm(a)
+        if an < EPS:
+            a = np.array([1.0, 0.0, 0.0])
+            an = 1.0
+        a = a / an
+        b = np.cross(nrm, a)
+        b = b / (np.linalg.norm(b) + EPS)
+        t1[i] = a
+        t2[i] = b
+    return t1, t2
+
+def cotangent_of_angle(a, b, c):
+    u = b - a
+    v = c - a
+    cross = np.linalg.norm(np.cross(u, v))
+    dot = np.dot(u, v)
+    if cross < EPS:
+        return 0.0
+    return dot / cross
+
+# ---------- connection Laplacian builder ----------
 
 def build_connection_laplacian(V, F, t1, t2):
-    """Builds the complex Connection Laplacian."""
+    """
+    Build complex-valued connection Laplacian Lc (n x n, sparse complex).
+    """
     n = V.shape[0]
     edge_w = {}
-    
-    # Helper: Cotangent
-    def cotangent(a, b, c):
-        u, v = b - a, c - a
-        return np.dot(u, v) / np.linalg.norm(np.cross(u, v))
 
-    # Accumulate weights
     for tri in F:
         i, j, k = tri
         vi, vj, vk = V[i], V[j], V[k]
-        w_k = 0.5 * cotangent(vi, vj, vk)
-        w_i = 0.5 * cotangent(vj, vk, vi)
-        w_j = 0.5 * cotangent(vk, vi, vj)
+        cot_i = cotangent_of_angle(vi, vj, vk)
+        cot_j = cotangent_of_angle(vj, vk, vi)
+        cot_k = cotangent_of_angle(vk, vi, vj)
         
-        for u, v, w in [(i, j, w_k), (j, k, w_i), (k, i, w_j)]:
-            key = tuple(sorted((u, v)))
+        def add(a,b,w):
+            key = (a,b) if a < b else (b,a)
             edge_w[key] = edge_w.get(key, 0.0) + w
+            
+        add(i,j, 0.5 * cot_k)
+        add(j,k, 0.5 * cot_i)
+        add(k,i, 0.5 * cot_j)
 
-    # Helper: Angle in tangent plane
-    def angle(i, j):
-        vec = V[j] - V[i]
-        x, y = np.dot(vec, t1[i]), np.dot(vec, t2[i])
+    def edge_angle(i, j):
+        d = V[j] - V[i]
+        x = np.dot(d, t1[i])
+        y = np.dot(d, t2[i])
         return np.arctan2(y, x)
 
-    rows, cols, data = [], [], []
+    rows = []
+    cols = []
+    data = []
+
     for (i, j), w in edge_w.items():
-        theta = angle(j, i) - angle(i, j) + np.pi
-        r_ij = np.exp(1j * theta)
-        
-        rows.extend([i, i, j, j])
-        cols.extend([i, j, i, j])
-        data.extend([w, -w*r_ij, -w*np.conj(r_ij), w])
+        if abs(w) < EPS: 
+            continue
+        alpha_ij = edge_angle(i, j)
+        alpha_ji = edge_angle(j, i)
+        theta_ij = alpha_ji - alpha_ij
+        r_ij = np.exp(1j * theta_ij)
 
-    return sp.coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+        # i,i
+        rows.append(i); cols.append(i); data.append(w)
+        # i,j
+        rows.append(i); cols.append(j); data.append(-w * r_ij)
+        # j,i
+        rows.append(j); cols.append(i); data.append(-w * np.conj(r_ij))
+        # j,j
+        rows.append(j); cols.append(j); data.append(w)
 
-def compute_tangent_frames(V, N):
-    """Generates arbitrary tangent frames (t1, t2) for every vertex."""
-    t1 = np.cross(N, np.array([0, 0, 1]))
-    mask = np.linalg.norm(t1, axis=1) < 1e-6
-    t1[mask] = np.cross(N[mask], np.array([0, 1, 0]))
-    t1 /= np.linalg.norm(t1, axis=1)[:, None]
-    t2 = np.cross(N, t1)
-    return t1, t2
+    Lc = sp.coo_matrix((np.array(data, dtype=np.complex128),
+                        (rows, cols)), shape=(n, n)).tocsr()
+    return Lc
+
+# ---------- conversions ----------
+
+def ambient_to_complex_per_vertex(w_ambient, t1, t2):
+    a = np.einsum('ij,ij->i', w_ambient, t1)
+    b = np.einsum('ij,ij->i', w_ambient, t2)
+    return a + 1j * b
+
+def complex_to_ambient(u_complex, t1, t2):
+    a = u_complex.real
+    b = u_complex.imag
+    return a[:,None] * t1 + b[:,None] * t2
+
+# ---------- Core Function (Callable) ----------
 
 def vector_heat_transport(mesh, source_idx, vector_at_source, t_mult=1.0):
     """
-    Transports a vector from source_idx to all other vertices.
-    Returns: (N, 3) array of vectors.
+    Computes parallel transport of a vector from source_idx to all vertices.
+    Returns: (N, 3) array of transported vectors.
     """
-    V, F = mesh.V, mesh.F
+    V = np.asarray(mesh.vertices, dtype=float)
+    F = np.asarray(mesh.faces, dtype=int)
+    n = V.shape[0]
     
-    # 1. Geometry setup
-    # Note: Using trimesh normals if available, else simplified
-    import trimesh
-    tm = trimesh.Trimesh(vertices=V, faces=F, process=False)
-    N = tm.vertex_normals
-    t1, t2 = compute_tangent_frames(V, N)
-    
-    # 2. Build Matrices
+    # 1. Geometry
+    M, _ = build_lumped_mass(V, F)
+    N = np.asarray(mesh.vertex_normals, dtype=float)
+    t1, t2 = vertex_frames_from_normals(V, N)
     Lc = build_connection_laplacian(V, F, t1, t2)
-    # Re-use your mass matrix logic
-    from operators.mass_matrix import lumped_mass_barycentric
-    M = lumped_mass_barycentric(V, F)
     
-    # 3. Time step
-    h = _typical_edge_length(V, F)
-    t = t_mult * h ** 2
+    # 2. Time step (h^2)
+    # Simple average edge length estimation
+    edges = V[F[:, 1]] - V[F[:, 0]]
+    avg_len = np.mean(np.linalg.norm(edges, axis=1))
+    t = t_mult * (avg_len ** 2)
 
-    # 4. Setup Source (in Complex Plane)
-    src_complex = np.dot(vector_at_source, t1[source_idx]) + 1j * np.dot(vector_at_source, t2[source_idx])
-    u0 = np.zeros(V.shape[0], dtype=np.complex128)
-    u0[source_idx] = src_complex
+    # 3. Setup Source
+    w0 = np.zeros((n, 3), dtype=float)
+    
+    # Normalize source vector
+    v_src = np.array(vector_at_source, dtype=float)
+    v_src /= (np.linalg.norm(v_src) + EPS)
+    w0[source_idx] = v_src
+    
+    u0 = ambient_to_complex_per_vertex(w0, t1, t2)
 
-    # 5. Solve (M - t Lc) u = M u0
+    # 4. Solve (M + t Lc) u = M u0
     A = M.astype(np.complex128) + t * Lc
-    b = M @ u0
+    b = M.dot(u0.astype(np.complex128))
     u = spla.spsolve(A, b)
     
-    # 6. Convert back to 3D vectors
-    u_normalized = u / (np.abs(u) + 1e-12) # Normalize to separate direction from magnitude
-    vecs = u_normalized.real[:, None] * t1 + u_normalized.imag[:, None] * t2
+    # 5. Convert back to R3
+    # Normalize magnitude to purely represent direction (parallel transport preserves norm)
+    # But numerical dissipation might reduce it, so we re-normalize.
+    mag = np.abs(u)
+    u_dir = u / (mag + EPS)
     
-    return vecs
-    
+    vectors_out = complex_to_ambient(u_dir, t1, t2)
+    return vectors_out
