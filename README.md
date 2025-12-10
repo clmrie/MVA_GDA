@@ -1,11 +1,16 @@
 # Geometric Data Analysis Project: Vector and Heat Methods
 
-This repository contains the complete implementation and experimental analysis for a project reproducing and critically evaluating the **Scalar Heat Method** (SHM) and the **Vector Heat Method** (VHM) for efficient geometry processing.
+This repository reimplements in Python the **Scalar Heat Method** (SHM) and the **Vector Heat Method** (VHM) for efficient geometry processing on discrete surfaces. The SHM uses two Poisson solves to approximate geodesic distance via scalar heat diffusion, while the VHM generalizes the idea with a connection Laplacian to transport tangent vectors.
 
-The core goal is to replace complex, slow path-tracing algorithms with sparse linear algebra solutions to compute geodesic distance, parallel transport, and geometric centers (Karcher Means) on curved surfaces.
+We combine both to build the Logarithmic Map and compute the geodesic barycenter (Karcher mean) on curved meshes.
 
-* **Scalar Geodesics:** [The Heat Method for Distance Computation](https://www.cs.cmu.edu/~kmcrane/Projects/HeatMethod/)
-* **Vector Transport:** [The Vector Heat Method (arXiv)](https://arxiv.org/pdf/1805.09170)
+| Log map | Karcher mean |
+| --- | --- |
+| ![](Report/figures/logmap_2.png) | ![](Report/figures/kercher_2.png) |
+
+> *_Crane, K., Weischedel, C., Wardetzky, M. 2013. Geodesics in Heat. ACM Trans. Graph. (SIGGRAPH)._*
+
+> *_Sharp, N., Crane, K. 2018. The Vector Heat Method. arXiv:1805.09170._*
 
 ## Key Features
 
@@ -26,5 +31,3 @@ The project is structured to cleanly separate the core physics engine from exper
 | `results/` | `figure2_logmap.png`, `figure3_karcher.png`, `plots/` | All code-generated output images and quantitative plots. |
 | `Report/` | `main.tex`, `figures/` | The final LaTeX source document and included figures. |
 | `visualize.py` | Main entry point | The Polyscope-based interactive viewer with view-toggling UI. |
-
-
