@@ -42,9 +42,13 @@ def main():
         print("   Please re-run generate_logmap.py on the cluster with the fixed script.")
         return
 
-    # 4. Initialize Polyscope
-    print("🎨 Initializing Polyscope...")
-    ps.init()
+    # 4. Initialize Polyscope (RESETTING SETTINGS)
+    print("🎨 Initializing Polyscope (Resetting view)...")
+    
+    # We use a dummy config file name to force Polyscope to ignore old settings (imgui.ini)
+    # This ensures the window starts fresh every time.
+    ps.init(config_file="temp_reset_polyscope.ini")
+    
     ps.set_up_dir("z_up") 
     ps.set_ground_plane_mode("shadow_only")
 
@@ -53,21 +57,21 @@ def main():
 
     # 6. Add Quantities for Visualization
     
-    # A. The Main Event: Log Map Parameterization
+    # A. The Main Event: Log Map Parameterization (The Grid)
     # This applies a grid texture based on the (u,v) coordinates we computed.
-    # If the log map is correct, you will see a clean spiderweb/grid pattern centered on the source.
+    # We explicitly enable this one.
     ps_mesh.add_parameterization_quantity("4. Log Map Grid", logmap_uv, 
                                           coords_type='world', 
                                           enabled=True, 
                                           viz_style='grid',
                                           cmap='blues')
 
-    # B. Scalar Fields (Distance and Angle)
+    # B. Scalar Fields (Distance and Angle) - DISABLED by default
+    # You can enable them manually in the UI if needed for the report.
     ps_mesh.add_scalar_quantity("1. Geodesic Distance (r)", r, enabled=False, cmap='turbo')
     ps_mesh.add_scalar_quantity("2. Polar Angle (theta)", theta, enabled=False, cmap='phase')
 
-    # C. Vector Field (Parallel Transport)
-    # This shows the vectors that were transported from the source without rotation
+    # C. Vector Field (Parallel Transport) - DISABLED by default
     ps_mesh.add_vector_quantity("3. Transported Vectors (X)", vec_X, 
                                 length=0.015, 
                                 radius=0.001,
@@ -77,6 +81,13 @@ def main():
     # 7. Show the GUI
     print("✅ Opening viewer window...")
     ps.show()
+    
+    # Cleanup dummy file
+    if os.path.exists("temp_reset_polyscope.ini"):
+        try:
+            os.remove("temp_reset_polyscope.ini")
+        except:
+            pass
 
 if __name__ == "__main__":
     main()
