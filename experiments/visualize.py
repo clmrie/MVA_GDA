@@ -1,179 +1,111 @@
-# experiments/visualize_all.py
-import os, sys, numpy as np
-sys.path.insert(0, os.path.abspath("."))
-
-import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation
+import os
+import numpy as np
+import polyscope as ps
+import polyscope.imgui as psim
 
 from src.mesh import Mesh
 from src.heat_method import heat_geodesic_from_sources
-from scipy.sparse import coo_matrix, csr_matrix
-from scipy.sparse.csgraph import dijkstra
 
-# -------------------------
-# Mesh dictionary
-# -------------------------
-base_dir = "data"
-mesh_paths = {
-    "armadillo": os.path.join(base_dir, "Armadillo.ply"),
-    "bunny": os.path.join(base_dir, "bunny/reconstruction/bun_zipper.ply"),
-    "drill": os.path.join(base_dir, "drill/reconstruction/drill_shaft_vrip.ply"),
-    "torus": os.path.join(base_dir, "torus.obj"),
-}
+try:
+    from src.vector_method import vector_heat_transport
+    HAS_VECTOR_METHOD = True
+except ImportError:
+    HAS_VECTOR_METHOD = False
+    print("⚠️ Notice: vector_method.py not found. Using gradient approximation.")
 
-# -------------------------
-# Helpers
-# -------------------------
-def edge_graph(V, F) -> csr_matrix:
-    E = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
-    E = np.sort(E, axis=1)
-    E = np.unique(E, axis=0)
-    w = np.linalg.norm(V[E[:, 0]] - V[E[:, 1]], axis=1)
-    n = V.shape[0]
-    rows = np.concatenate([E[:, 0], E[:, 1]])
-    cols = np.concatenate([E[:, 1], E[:, 0]])
-    data = np.concatenate([w, w])
-    return coo_matrix((data, (rows, cols)), shape=(n, n)).tocsr()
+# Data Names
+MESH_NAME = "Bunny Mesh"
+Q_DIST = "Geodesic Distance"
+Q_VEC = "Log Map Vectors"
+P_SRC = "Source Point"
+P_TGT = "Target Points (Red)"
+P_MEAN = "Karcher Mean (Green)"
 
-def robust_scale(dist: np.ndarray) -> float:
-    finite = dist[np.isfinite(dist)]
-    if finite.size == 0:
-        return 1.0
-    return float(np.percentile(finite, 90.0))
+def main(mesh_path):
+    # 1. Init
+    ps.init()
+    ps.set_program_name("Geometric Data Analysis - Interactive")
+    ps.set_up_dir("z_up")
+    ps.set_ground_plane_mode("shadow_only")
+    ps.set_transparency_mode("none")
+    
+    # 2. Load
+    if not os.path.exists(mesh_path):
+        print(f"Error: {mesh_path} not found.")
+        return
 
-def random_source(V: np.ndarray) -> int:
-    """Random vertex index (seed must be set outside for reproducibility)."""
-    return int(np.random.randint(0, len(V)))
-
-def _pca_project(V: np.ndarray) -> np.ndarray:
-    """Project 3D vertices to 2D via PCA (good for elongated meshes)."""
-    X = V - V.mean(0, keepdims=True)
-    _, _, VT = np.linalg.svd(X, full_matrices=False)
-    B = VT[:2]  # top-2 principal directions (2x3)
-    return X @ B.T
-
-def plot_isolines(
-    M: Mesh,
-    phi: np.ndarray,
-    src: int,
-    title: str,
-    save_path: str,
-    *,
-    projection: str = "pca",
-    vmax_percentile: float = 90.0,
-    crop_to_cap: bool = True,
-):
-    V, F = M.V, M.F
-    XY = V[:, :2] if projection == "xy" else _pca_project(V)
-
-    vmin = float(phi.min())
-    vmax = float(np.percentile(phi, vmax_percentile))
-    tri = Triangulation(XY[:, 0], XY[:, 1], triangles=F)
-
-    if crop_to_cap:
-        tri_mask = (phi[F].max(axis=1) > vmax)
-        tri.set_mask(tri_mask)
-        kept_verts = np.unique(F[~tri_mask].ravel())
-        if kept_verts.size > 0:
-            xk, yk = XY[kept_verts, 0], XY[kept_verts, 1]
-        else:
-            xk, yk = XY[:, 0], XY[:, 1]
-    else:
-        xk, yk = XY[:, 0], XY[:, 1]
-
-    levels = np.linspace(vmin, vmax, 40)
-    fig, ax = plt.subplots(figsize=(7, 6))
-    tpc = ax.tricontourf(tri, phi, levels=levels, cmap="viridis")
-    ax.tricontour(tri, phi, levels=15, colors="k", linewidths=0.45, alpha=0.8)
-    ax.plot([XY[src, 0]], [XY[src, 1]], "ro", markersize=4)
-    ax.set_aspect("equal", adjustable="box")
-
-    margin_x = 0.05 * (xk.max() - xk.min() + 1e-12)
-    margin_y = 0.05 * (yk.max() - yk.min() + 1e-12)
-    ax.set_xlim(xk.min() - margin_x, xk.max() + margin_x)
-    ax.set_ylim(yk.min() - margin_y, yk.max() + margin_y)
-
-    ax.set_title(title)
-    fig.colorbar(tpc, ax=ax, shrink=0.8, label="distance")
-    plt.tight_layout()
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-
-def sweep_t_and_plot(mesh_name: str, mesh_path: str, src: int):
     M = Mesh.load(mesh_path)
-    V, F = M.V, M.F
-    G = edge_graph(V, F)
-    t_mults = (0.25, 1, 4, 16, 64)
-    rel_means, rel_maxes = [], []
+    ps_mesh = ps.register_surface_mesh(MESH_NAME, M.V, M.F, smooth_shade=True)
 
-    for tm in t_mults:
-        phi, _ = heat_geodesic_from_sources(
-            M, src, t=None, t_mult=tm, heat_rhs="Mdelta"
-        )
-        phi = np.maximum(phi - phi[src], 0.0)
-        d = dijkstra(G, directed=False, indices=src)
-        scale = max(robust_scale(d), 1e-12)
-        err = np.abs(phi - d)
-        rel_means.append(float(err.mean() / scale))
-        rel_maxes.append(float(err.max() / scale))
+    print("Computing Physics...")
+    
+    # --- PRE-COMPUTE DATA ---
+    src_idx = int(np.argmax(np.linalg.norm(M.V - M.V.mean(0), axis=1)))
+    phi, info = heat_geodesic_from_sources(M, src_idx)
+    r = phi - phi.min()
+    
+    if HAS_VECTOR_METHOD:
+        vecs = vector_heat_transport(M, src_idx, np.array([0., 1., 0.]))
+    else:
+        grad_u = info['X']
+        vecs = np.zeros_like(M.V)
+        np.add.at(vecs, M.F, grad_u[:, None, :])
+        vecs /= (np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-6)
 
-    fig, ax = plt.subplots(figsize=(5.5, 4))
-    ax.plot(t_mults, rel_means, "o-", label="mean error")
-    ax.plot(t_mults, rel_maxes, "s--", label="max error", alpha=0.8)
-    ax.set_xscale("log")
-    ax.set_xlabel("t / h²")
-    ax.set_ylabel("relative error")
-    ax.set_title(f"{mesh_name}: Error vs t/h²")
-    ax.grid(True, ls=":")
-    ax.legend()
-    out_dir = os.path.join("results", "plots")
-    os.makedirs(out_dir, exist_ok=True)
-    save_path = os.path.join(out_dir, f"{mesh_name}_t_sweep.png")
-    plt.savefig(save_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  → Saved error plot: {save_path}")
+    log_map_vecs = vecs * (r[:, None] / r.max() * 0.1)
 
-# -------------------------
-# Main loop
-# -------------------------
-if __name__ == "__main__":
-    out_dir = os.path.join("results", "plots")
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Fixed random seed for reproducible sources across meshes
+    # Karcher Data
     np.random.seed(42)
+    targets = M.V[np.random.choice(M.V.shape[0], size=3, replace=False)]
+    mean_approx = np.mean(targets, axis=0)
+    src_pos = M.V[[src_idx]]
 
-    t_mult_map = {
-        "armadillo": 32.0,
-        "drill": 32.0,
-        "bunny": 16.0,
-        "torus": 4.0,
-    }
+    # 3. Initial State: Show Log Map
+    ps_mesh.add_scalar_quantity(Q_DIST, r, cmap='turbo', enabled=True)
+    ps_mesh.add_vector_quantity(Q_VEC, log_map_vecs, color=(0.2,0.2,0.2), length=0.03, radius=0.003, enabled=True)
+    ps.register_point_cloud(P_SRC, src_pos, radius=0.015, color=(1,1,0), enabled=True)
+    ps.register_point_cloud(P_TGT, targets, radius=0.02, color=(1,0,0), enabled=False)
+    ps.register_point_cloud(P_MEAN, mean_approx[None,:], radius=0.025, color=(0,1,0), enabled=False)
 
-    for name, path in mesh_paths.items():
-        print(f"\n=== Processing {name} ===")
-        M = Mesh.load(path)
-        V, _ = M.V, M.F
-        src = random_source(V)  # reproducible due to global seed
-        t_mult = t_mult_map.get(name.lower(), 16.0)
+    # 4. Define the UI Callback
+    def my_callback():
+        psim.PushItemWidth(150)
+        psim.TextUnformatted("Select View Mode:")
+        psim.Separator()
 
-        phi, _ = heat_geodesic_from_sources(
-            M, src, t=None, t_mult=t_mult, heat_rhs="Mdelta"
-        )
-        phi = np.maximum(phi - phi[src], 0.0)
+        # BUTTON 1: LOG MAP
+        if psim.Button("View 1: Log Map"):
+            
+            ps_mesh.set_color((1.0, 1.0, 1.0))
+            
+            ps_mesh.add_scalar_quantity(Q_DIST, r, cmap='turbo', enabled=True)
+            ps_mesh.add_vector_quantity(Q_VEC, log_map_vecs, color=(0.2,0.2,0.2), length=0.03, radius=0.003, enabled=True)
+            ps.register_point_cloud(P_SRC, src_pos, radius=0.015, color=(1,1,0), enabled=True)
+            
+            ps.register_point_cloud(P_TGT, targets, radius=0.02, color=(1,0,0), enabled=False)
+            ps.register_point_cloud(P_MEAN, mean_approx[None,:], radius=0.025, color=(0,1,0), enabled=False)
 
-        isolines_png = os.path.join(out_dir, f"{name}_isolines_t{int(t_mult)}.png")
-        plot_isolines(
-            M, phi, src,
-            f"{name} — Isolines (t={t_mult}h², random src)",
-            isolines_png,
-            projection="pca",
-            vmax_percentile=90.0,
-            crop_to_cap=True,
-        )
-        print(f"  → Saved isolines: {isolines_png}")
+        # BUTTON 2: KARCHER MEAN
+        if psim.Button("View 2: Karcher Mean"):
+            ps_mesh.set_color((0.8, 0.8, 0.8))
+            
+            ps_mesh.add_scalar_quantity(Q_DIST, r, cmap='turbo', enabled=False)
+            ps_mesh.add_vector_quantity(Q_VEC, log_map_vecs, color=(0.2,0.2,0.2), length=0.03, radius=0.003, enabled=False)
+            ps.register_point_cloud(P_SRC, src_pos, radius=0.015, color=(1,1,0), enabled=False)
+            
+            ps.register_point_cloud(P_TGT, targets, radius=0.02, color=(1,0,0), enabled=True)
+            ps.register_point_cloud(P_MEAN, mean_approx[None,:], radius=0.025, color=(0,1,0), enabled=True)
+            
+        psim.Separator()
+        psim.TextUnformatted("Rotate: Left Click")
+        psim.TextUnformatted("Screenshot: Camera Icon")
 
-        sweep_t_and_plot(name, path, src)
+    # 5. Hook up the callback
+    ps.set_user_callback(my_callback)
 
-    print("\nAll meshes processed. Plots saved in results/plots/")
+    print("\n✅ Interactive Window Open.")
+    ps.show()
+
+if __name__ == "__main__":
+    path = os.path.join("data", "bunny", "reconstruction", "bun_zipper.ply")
+    main(path)
