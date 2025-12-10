@@ -1,24 +1,23 @@
-
-
-
 import numpy as np
 import polyscope as ps
 import argparse
 import os
+import sys
 
 def main():
-    # 1. Setup argument parser to easily load different files if needed
+    # 1. Setup argument parser
     parser = argparse.ArgumentParser(description="Visualize Log Map from NPZ data")
-    parser.add_argument('file', default='logmap_data.npz', nargs='?', help="Path to the .npz file downloaded from the cluster")
+    parser.add_argument('file', default='logmap_data.npz', nargs='?', 
+                        help="Path to the .npz file downloaded from the cluster")
     args = parser.parse_args()
 
     # 2. Check if file exists
     if not os.path.exists(args.file):
-        print(f"Error: File '{args.file}' not found.")
-        print("Make sure you downloaded 'logmap_data.npz' from your cluster to this folder.")
+        print(f"❌ Error: File '{args.file}' not found.")
+        print("   Make sure you are running this command in the same folder as the .npz file.")
         return
 
-    print(f"Loading data from {args.file}...")
+    print(f"📂 Loading data from {args.file}...")
     try:
         data = np.load(args.file)
         # Extract data arrays
@@ -28,40 +27,56 @@ def main():
         theta = data['theta']         # Polar Angle
         logmap_uv = data['logmap_uv'] # 2D Log Map coordinates (u, v)
         vec_X = data['vectors_X']     # Parallel Transport Vectors
+        
+        print(f"   - Vertices: {V.shape}")
+        print(f"   - Faces:    {F.shape}")
     except KeyError as e:
-        print(f"Error loading data: Missing key {e}. Is the .npz file corrupted?")
+        print(f"❌ Error loading data: Missing key {e}.")
+        print("   Is the .npz file corrupted or from an old version of the script?")
         return
 
-    # 3. Initialize Polyscope
-    print("Initializing Polyscope...")
-    ps.init()
-    ps.set_up_dir("z_up") # Adjust if your mesh orientation is different
+    # 3. Check for NaNs before crashing the viewer
+    if np.any(np.isnan(V)) or np.any(np.isnan(logmap_uv)):
+        print("❌ CRITICAL ERROR: The data contains NaNs (Not a Number).")
+        print("   This means the computation on the cluster failed.")
+        print("   Please re-run generate_logmap.py on the cluster with the fixed script.")
+        return
 
-    # 4. Register the mesh
+    # 4. Initialize Polyscope
+    print("🎨 Initializing Polyscope...")
+    ps.init()
+    ps.set_up_dir("z_up") 
+    ps.set_ground_plane_mode("shadow_only")
+
+    # 5. Register the mesh
     ps_mesh = ps.register_surface_mesh("LogMap Mesh", V, F)
 
-    # 5. Add Quantities for Visualization
+    # 6. Add Quantities for Visualization
     
-    # A. Scalar Fields (Distance and Angle)
-    ps_mesh.add_scalar_quantity("1. Geodesic Distance (r)", r, enabled=True, cmap='turbo')
-    ps_mesh.add_scalar_quantity("2. Polar Angle (theta)", theta, enabled=False, cmap='phase')
-
-    # B. Vector Field (Parallel Transport)
-    # This shows the vectors that were transported from the source without rotation
-    ps_mesh.add_vector_quantity("3. Transported Vectors (X)", vec_X, length=0.01, enabled=False)
-
-    # C. Parameterization (The Actual Log Map)
-    # This applies a texture (checkerboard/grid) based on the computed (u,v) coordinates.
-    # If the Log Map is correct, you will see a clean grid centered on the source.
-    ps_mesh.add_parameterization_quantity("4. Log Map (UV)", logmap_uv, 
+    # A. The Main Event: Log Map Parameterization
+    # This applies a grid texture based on the (u,v) coordinates we computed.
+    # If the log map is correct, you will see a clean spiderweb/grid pattern centered on the source.
+    ps_mesh.add_parameterization_quantity("4. Log Map Grid", logmap_uv, 
                                           coords_type='world', 
                                           enabled=True, 
-                                          viz_style='grid') # Options: 'checkerboard', 'grid', 'local_check'
+                                          viz_style='grid',
+                                          cmap='blues')
 
-    # 6. Show the GUI
-    print("Opening viewer window...")
+    # B. Scalar Fields (Distance and Angle)
+    ps_mesh.add_scalar_quantity("1. Geodesic Distance (r)", r, enabled=False, cmap='turbo')
+    ps_mesh.add_scalar_quantity("2. Polar Angle (theta)", theta, enabled=False, cmap='phase')
+
+    # C. Vector Field (Parallel Transport)
+    # This shows the vectors that were transported from the source without rotation
+    ps_mesh.add_vector_quantity("3. Transported Vectors (X)", vec_X, 
+                                length=0.015, 
+                                radius=0.001,
+                                color=(0.2, 0.2, 0.2),
+                                enabled=False)
+
+    # 7. Show the GUI
+    print("✅ Opening viewer window...")
     ps.show()
 
 if __name__ == "__main__":
     main()
-    
