@@ -6,7 +6,6 @@ import argparse
 import numpy as np
 import trimesh
 
-# --- 1. Path Setup ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
 sys.path.append(src_dir)
@@ -19,7 +18,6 @@ except ImportError as e:
     print(f"Error importing modules: {e}")
     sys.exit(1)
 
-# --- 2. Robust Log Map Logic ---
 
 def average_face_field_to_vertices(mesh, face_field):
     V = mesh.vertices
@@ -78,7 +76,6 @@ def get_logmap_complex(mesh, source_idx):
     
     return r * np.exp(1j * theta)
 
-# --- 3. Karcher Mean Algorithm ---
 
 def compute_karcher_mean(mesh, targets, max_iters=15):
     """
@@ -121,7 +118,6 @@ def compute_karcher_mean(mesh, targets, max_iters=15):
 
     return current_mean_idx
 
-# --- 4. Main ---
 
 def main():
     default_path = os.path.join("data", "bunny", "reconstruction", "bun_zipper.ply")
@@ -137,7 +133,6 @@ def main():
     print(f"Loading mesh: {args.mesh_path}")
     mesh = trimesh.load(args.mesh_path, process=False)
     
-    # --- Clean Mesh ---
     mesh.merge_vertices()
     mesh.remove_duplicate_faces()
     mesh.remove_degenerate_faces()
@@ -146,17 +141,14 @@ def main():
         mesh = max(comps, key=lambda m: len(m.vertices))
     print(f"Cleaned Mesh: {len(mesh.vertices)} verts")
     
-    # --- Pick Targets ---
-    # We pick 3 random points far from each other to make it interesting
-    np.random.seed(99) # Fixed seed for reproducibility
+   
+    np.random.seed(99)
     targets = np.random.choice(len(mesh.vertices), 3, replace=False)
     print(f"Targets indices: {targets}")
 
-    # --- Run Karcher Mean ---
     mean_idx = compute_karcher_mean(mesh, targets)
     print(f"Result: Karcher Mean is Vertex {mean_idx}")
 
-    # --- Save Data ---
     print(f"Saving to {args.out}...")
     np.savez(args.out, 
              vertices=mesh.vertices,

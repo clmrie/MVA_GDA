@@ -5,13 +5,10 @@ import argparse
 import numpy as np
 import trimesh
 
-# --- CRITICAL FIX: Add 'src' to the Python path ---
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
 sys.path.append(src_dir)
-# --------------------------------------------------
 
-# Now we can safely import from src/
 try:
     from heat_method import heat_geodesic_from_sources
     from vector_method import vector_heat_transport
@@ -67,7 +64,6 @@ def compute_polar_coordinates(mesh, source_idx):
             self.F = f
     sm = SimpleMesh(mesh.vertices, mesh.faces)
     
-    # --- 1. SCALAR HEAT: Geodesic Distance (r) ---
     print("--- Step 1: Scalar Heat (Distance) ---")
     try:
         phi, _ = heat_geodesic_from_sources(sm, [source_idx])
@@ -79,7 +75,6 @@ def compute_polar_coordinates(mesh, source_idx):
         phi = np.nan_to_num(phi)
     r = phi - phi.min()
     
-    # --- 2. VECTOR HEAT: Parallel Transport (X) ---
     print("--- Step 2: Vector Heat (Parallel Transport) ---")
     start_vec = np.array([1.0, 0.0, 0.0]) 
     try:
@@ -91,7 +86,6 @@ def compute_polar_coordinates(mesh, source_idx):
     if check_nan("Vectors X", X):
         X = np.nan_to_num(X)
 
-    # --- 3. GRADIENT: Radial Direction (G) ---
     print("--- Step 3: Gradient (Radial Direction) ---")
     grad_per_face = gradient_scalar_per_face(mesh.vertices, mesh.faces, r)
     G = average_face_field_to_vertices(mesh, grad_per_face)
@@ -102,7 +96,6 @@ def compute_polar_coordinates(mesh, source_idx):
     norm_X = np.linalg.norm(X, axis=1, keepdims=True)
     X_normalized = np.divide(X, norm_X, out=np.zeros_like(X), where=norm_X > 1e-12)
     
-    # --- 4. ANGLE: Polar Theta ---
     print("--- Step 4: Polar Angle ---")
     N = mesh.vertex_normals
     
@@ -126,7 +119,6 @@ def main():
                         help=f"Path to input mesh. Defaults to {default_path}")
     parser.add_argument('--out', default='logmap_data.npz', help="Output NPZ file")
     
-    # --- Source Selection Parameter ---
     parser.add_argument('--source_mode', default='extreme', 
                         choices=['center', 'extreme', 'manual'], 
                         help="Source selection: 'extreme' (furthest tip), 'center' (centroid-closest), 'manual' (index 0).")
@@ -139,7 +131,6 @@ def main():
     print(f"Loading mesh: {args.mesh_path}")
     mesh = trimesh.load(args.mesh_path, process=False)
     
-    # --- MESH CLEANUP (Robustness) ---
     print(f"Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     
     print("Merging duplicate vertices and cleaning mesh...")
@@ -154,9 +145,7 @@ def main():
         mesh = max(components, key=lambda m: len(m.vertices))
         
     print(f"Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
-    # ---------------------------------
     
-    # --- SOURCE SELECTION LOGIC ---
     centroid = mesh.vertices.mean(axis=0)
     dists = np.linalg.norm(mesh.vertices - centroid, axis=1)
 
@@ -168,7 +157,6 @@ def main():
         source_idx = 0 
         
     print(f"Source Mode: {args.source_mode.upper()} (Index: {source_idx})")
-    # ------------------------------
     
     r, theta, X, G = compute_polar_coordinates(mesh, source_idx)
     
@@ -176,7 +164,6 @@ def main():
         print("Calculation failed.")
         return
 
-    # Compute UV (Log Map Coordinates)
     u = r * np.cos(theta)
     v = r * np.sin(theta)
     logmap_uv = np.stack([u, v], axis=1)

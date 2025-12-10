@@ -6,17 +6,14 @@ import trimesh
 
 EPS = 1e-12
 
-# ---------- geometry helpers ----------
 
 def build_lumped_mass(V, F):
     n = V.shape[0]
     M_diag = np.zeros(n, dtype=float)
-    # triangle areas
     v0 = V[F[:, 0]]
     v1 = V[F[:, 1]]
     v2 = V[F[:, 2]]
     face_areas = 0.5 * np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
-    # accumulate 1/3 * area at each incident vertex
     for k, tri in enumerate(F):
         area = face_areas[k]
         M_diag[tri] += area / 3.0
@@ -29,7 +26,6 @@ def vertex_frames_from_normals(V, N):
     n = V.shape[0]
     t1 = np.zeros((n,3), dtype=float)
     t2 = np.zeros((n,3), dtype=float)
-    # global reference
     ref = np.array([0.0, 0.0, 1.0])
     for i in range(n):
         nrm = N[i]
@@ -57,7 +53,6 @@ def cotangent_of_angle(a, b, c):
         return 0.0
     return dot / cross
 
-# ---------- connection Laplacian builder ----------
 
 def build_connection_laplacian(V, F, t1, t2):
     """
@@ -112,7 +107,6 @@ def build_connection_laplacian(V, F, t1, t2):
                         (rows, cols)), shape=(n, n)).tocsr()
     return Lc
 
-# ---------- conversions ----------
 
 def ambient_to_complex_per_vertex(w_ambient, t1, t2):
     a = np.einsum('ij,ij->i', w_ambient, t1)
@@ -124,7 +118,6 @@ def complex_to_ambient(u_complex, t1, t2):
     b = u_complex.imag
     return a[:,None] * t1 + b[:,None] * t2
 
-# ---------- Core Function (Callable) ----------
 
 def vector_heat_transport(mesh, source_idx, vector_at_source, t_mult=1.0):
     """
