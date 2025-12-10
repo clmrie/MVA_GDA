@@ -6,13 +6,11 @@ import numpy as np
 import trimesh
 
 # --- CRITICAL FIX: Add 'src' to the Python path ---
-# This tells Python to look inside the 'src' folder for your modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
 sys.path.append(src_dir)
 # --------------------------------------------------
 
-# Now we can safely import from src/
 try:
     from heat_method import heat_geodesic_from_sources
     from vector_method import vector_heat_transport
@@ -49,15 +47,11 @@ def average_face_field_to_vertices(mesh, face_field):
     vertex_weight_sum = np.zeros(n_verts)
     
     for i in range(3):
-        # Add contribution of face to each of its vertices
         np.add.at(vertex_vectors, F[:, i], face_field * face_areas[:, None])
         np.add.at(vertex_weight_sum, F[:, i], face_areas)
         
-    # Normalize by total weight (area)
     mask = vertex_weight_sum > 1e-12
     vertex_vectors[mask] /= vertex_weight_sum[mask][:, None]
-    
-    # Clean up vertices that had no area attached (isolated vertices)
     vertex_vectors[~mask] = 0.0
     
     return vertex_vectors
@@ -65,9 +59,7 @@ def average_face_field_to_vertices(mesh, face_field):
 def compute_polar_coordinates(mesh, source_idx):
     """
     Computes Log Map coordinates (r, theta) and vector fields.
-    Includes error handling for robust execution.
     """
-    # Simple wrapper class if heat_method expects an object with V/F
     class SimpleMesh:
         def __init__(self, v, f):
             self.V = v
@@ -82,11 +74,8 @@ def compute_polar_coordinates(mesh, source_idx):
         print(f"❌ Critical Error in Scalar Heat: {e}")
         return None, None, None, None
 
-    # Handle NaNs in distance immediately
     if check_nan("Phi (Heat)", phi):
         phi = np.nan_to_num(phi)
-
-    # Convert heat solution to distance
     r = phi - phi.min()
     
     # --- 2. VECTOR HEAT: Parallel Transport (X) ---
@@ -106,7 +95,6 @@ def compute_polar_coordinates(mesh, source_idx):
     grad_per_face = gradient_scalar_per_face(mesh.vertices, mesh.faces, r)
     G = average_face_field_to_vertices(mesh, grad_per_face)
     
-    # Secure Normalization
     norm_G = np.linalg.norm(G, axis=1, keepdims=True)
     G_normalized = np.divide(G, norm_G, out=np.zeros_like(G), where=norm_G > 1e-12)
     
@@ -117,7 +105,6 @@ def compute_polar_coordinates(mesh, source_idx):
     print("--- Step 4: Polar Angle ---")
     N = mesh.vertex_normals
     
-    # Angle calculation using dot product and cross product
     dot_prod = np.sum(X_normalized * G_normalized, axis=1)
     cross_prod = np.cross(X_normalized, G_normalized)
     det = np.sum(cross_prod * N, axis=1)
@@ -125,14 +112,12 @@ def compute_polar_coordinates(mesh, source_idx):
     dot_prod = np.clip(dot_prod, -1.0, 1.0)
     theta = np.arctan2(det, dot_prod)
     
-    # Clean final result
     check_nan("Theta", theta)
     theta = np.nan_to_num(theta)
     
     return r, theta, X, G
 
 def main():
-    # Default path based on your tree structure
     default_path = os.path.join("data", "bunny", "reconstruction", "bun_zipper.ply")
 
     parser = argparse.ArgumentParser(description="Generate Log Map Data (.npz)")
@@ -141,45 +126,49 @@ def main():
     parser.add_argument('--out', default='logmap_data.npz', help="Output NPZ file")
     args = parser.parse_args()
     
-    # Verify file existence
     if not os.path.exists(args.mesh_path):
         print(f"Error: Mesh file not found at: {args.mesh_path}")
-        print("Please check the path or provide a valid .ply/.obj file.")
         return
 
     print(f"Loading mesh: {args.mesh_path}")
     # Load raw mesh
-    mesh_raw = trimesh.load(args.mesh_path, process=False)
-
-    # --- FIX: Keep only the largest connected component ---
-    # This prevents 'Matrix is exactly singular' errors caused by disconnected noise
-    print("Checking mesh connectivity...")
-    components = mesh_raw.split(only_watertight=False)
+    mesh = trimesh.load(args.mesh_path, process=False)
+    
+    # --- MESH CLEANUP (The Fix) ---
+    print(f"Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+    
+    # 1. Merge duplicate vertices (zipping the mesh)
+    print("Merging duplicate vertices...")
+    mesh.merge_vertices()
+    
+    # 2. Remove degenerate faces (area ~ 0)
+    print("Removing degenerate faces...")
+    mesh.remove_duplicate_faces()
+    mesh.remove_degenerate_faces()
+    
+    # 3. Keep largest component
+    print("Checking connectivity...")
+    components = mesh.split(only_watertight=False)
     if len(components) > 1:
-        print(f"⚠️  Mesh has {len(components)} disconnected parts. Keeping the largest one to ensure stability.")
+        print(f"⚠️  Mesh has {len(components)} disconnected parts. Keeping the largest one.")
         mesh = max(components, key=lambda m: len(m.vertices))
-    else:
-        mesh = mesh_raw
+        
+    print(f"Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
+    # -----------------------------
     
-    print(f"Processing mesh with {len(mesh.vertices)} vertices and {len(mesh.faces)} faces.")
-    # --------------------------------------------------------
-    
-    # --- Robust Source Selection ---
-    # Find the vertex closest to the center of mass (safe bet)
+    # Robust Source Selection
     centroid = mesh.vertices.mean(axis=0)
     dists = np.linalg.norm(mesh.vertices - centroid, axis=1)
     source_idx = np.argmin(dists) 
-    
     print(f"Source Index (Centroid-closest): {source_idx}")
     
-    # Run Calculation
     r, theta, X, G = compute_polar_coordinates(mesh, source_idx)
     
     if r is None:
         print("Calculation failed.")
         return
 
-    # Compute UV coordinates (Flattening)
+    # Compute UV
     u = r * np.cos(theta)
     v = r * np.sin(theta)
     logmap_uv = np.stack([u, v], axis=1)
